@@ -1,0 +1,821 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReadinessStatus { READY WARNING OUT_OF_SERVICE MAINTENANCE_DUE RETIRED }
+enum IncidentStatus { DRAFT SUBMITTED QA_NEEDED APPROVED CLOSED EXPORTED }
+enum Priority { LOW NORMAL HIGH CRITICAL }
+enum TrainingAttendanceStatus { ASSIGNED ATTENDED MISSED EXCUSED COMPLETED FAILED NEEDS_REMEDIATION }
+enum InspectionStatus { SCHEDULED IN_PROGRESS PASSED FAILED REINSPECTION_REQUIRED CLOSED }
+enum PermitStatus { SUBMITTED UNDER_REVIEW APPROVED DENIED EXPIRED CLOSED }
+enum IntegrationStatus { HEALTHY DEGRADED FAILED PAUSED }
+enum ExchangeMethod { REAL_TIME BATCH EVENT_DRIVEN MANUAL }
+enum SupportStatus { OPEN IN_PROGRESS WAITING_ON_CUSTOMER RESOLVED CLOSED }
+
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  timezone    String   @default("America/Denver")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+  stations    Station[]
+  personnel   Personnel[]
+  incidents   Incident[]
+  assets      Asset[]
+  properties  Property[]
+  auditLogs   AuditLog[]
+}
+
+model User {
+  id           String     @id @default(uuid())
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  email        String     @unique
+  passwordHash String
+  displayName  String
+  isActive     Boolean    @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  roles        UserRole[]
+  auditLogs    AuditLog[]
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  tenantId    String?
+  name        String
+  code        String           @unique
+  description String?
+  users       UserRole[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  createdBy   String?
+  updatedBy   String?
+  isDeleted   Boolean          @default(false)
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  module      String
+  name        String
+  description String?
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Battalion {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  code        String
+  name        String
+  chiefName   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?
+  updatedBy   String?
+  isDeleted   Boolean  @default(false)
+  stations    Station[]
+}
+
+model ShiftPlatoon {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  code        String
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?
+  updatedBy   String?
+  isDeleted   Boolean  @default(false)
+}
+
+model DepartmentUnit {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  code        String
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?
+  updatedBy   String?
+  isDeleted   Boolean  @default(false)
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@id([roleId, permissionId])
+}
+
+model Station {
+  id              String            @id @default(uuid())
+  tenantId        String
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  battalionId     String?
+  battalionRef    Battalion?        @relation(fields: [battalionId], references: [id])
+  number          Int
+  name            String
+  battalion       String
+  address         String?
+  city            String?
+  readinessScore  Int               @default(85)
+  staffingStatus  String            @default("Covered")
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  createdBy       String?
+  updatedBy       String?
+  isDeleted       Boolean           @default(false)
+  personnel       Personnel[]
+  incidents       Incident[]
+  apparatus       Apparatus[]
+  inventory       InventoryItem[]
+  inspections     Inspection[]
+  shiftAssignments ShiftAssignment[]
+}
+
+model Personnel {
+  id             String      @id @default(uuid())
+  tenantId       String
+  tenant         Tenant      @relation(fields: [tenantId], references: [id])
+  stationId      String?
+  station        Station?    @relation(fields: [stationId], references: [id])
+  battalionId    String?
+  battalionRef   Battalion?  @relation(fields: [battalionId], references: [id])
+  rankId         String?
+  rankRef        Rank?       @relation(fields: [rankId], references: [id])
+  employeeNumber String      @unique
+  firstName      String
+  lastName       String
+  fullName       String?
+  rank           String
+  roleTitle      String?
+  role           String
+  email          String?
+  phone          String?
+  currentStationId String?
+  currentShiftPlatoonId String?
+  status         String      @default("Active")
+  employmentStatus String?   @default("Full Time")
+  readinessStatus String?    @default("READY")
+  readinessScore Int         @default(90)
+  yearsOfService Int?        @default(0)
+  supervisorPersonnelId String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  createdBy      String?
+  updatedBy      String?
+  isDeleted      Boolean     @default(false)
+  deletedAt      DateTime?
+  certifications PersonnelCertification[]
+  assignments PersonnelAssignment[]
+  assignmentHistory PersonnelAssignmentHistory[]
+  trainingAssignments TrainingAssignment[]
+  shiftAssignments ShiftAssignment[]
+  incidentLinks IncidentPersonnel[]
+  reviews PersonnelPerformanceReview[]
+  goals PersonnelGoal[]
+  notes PersonnelNote[]
+  documents PersonnelDocument[]
+  readinessSnapshots PersonnelReadinessSnapshot[]
+  overtimeRecords OvertimeRecord[]
+  availability AvailabilityRecord[]
+}
+
+model PersonnelDocument { id String @id @default(uuid()) tenantId String personnelId String personnel Personnel @relation(fields: [personnelId], references: [id]) documentType String title String fileName String? fileUrl String? expiryDate DateTime? uploadedBy String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt isDeleted Boolean @default(false) }
+model PersonnelPerformanceReview { id String @id @default(uuid()) tenantId String personnelId String personnel Personnel @relation(fields: [personnelId], references: [id]) reviewPeriod String reviewerPersonnelId String? overallRating Int? leadershipRating Int? clinicalRating Int? operationalRating Int? documentationRating Int? teamworkRating Int? safetyRating Int? comments String? status String @default("Draft") createdAt DateTime @default(now()) updatedAt DateTime @updatedAt }
+model PersonnelGoal { id String @id @default(uuid()) tenantId String personnelId String personnel Personnel @relation(fields: [personnelId], references: [id]) title String description String? category String? targetDate DateTime? status String @default("Open") progressPercent Int @default(0) createdBy String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt isDeleted Boolean @default(false) }
+model PersonnelNote { id String @id @default(uuid()) tenantId String personnelId String personnel Personnel @relation(fields: [personnelId], references: [id]) noteType String visibility String @default("Private") title String body String createdBy String? createdAt DateTime @default(now()) }
+model PersonnelReadinessSnapshot { id String @id @default(uuid()) tenantId String personnelId String personnel Personnel @relation(fields: [personnelId], references: [id]) snapshotDate DateTime @default(now()) trainingScore Int certificationScore Int staffingReliabilityScore Int incidentDocumentationScore Int performanceScore Int overtimeRiskScore Int overallReadinessScore Int riskLevel String evidenceSummary String createdAt DateTime @default(now()) updatedAt DateTime @updatedAt }
+
+model Rank {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  code        String
+  name        String
+  sortOrder   Int?
+  level       Int?
+  category    String?
+  isOfficerRank Boolean @default(false)
+  isCommandRank Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?
+  updatedBy   String?
+  isDeleted   Boolean  @default(false)
+  personnel   Personnel[]
+}
+
+model PersonnelAssignment {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  personnelId   String
+  personnel     Personnel @relation(fields: [personnelId], references: [id])
+  stationId     String
+  station       Station   @relation(fields: [stationId], references: [id])
+  platoonCode   String?
+  assignmentType String?
+  startDate     DateTime?
+  endDate       DateTime?
+  isCurrent     Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdBy     String?
+  updatedBy     String?
+  isDeleted     Boolean   @default(false)
+}
+
+model PersonnelAssignmentHistory {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  personnelId   String
+  personnel     Personnel @relation(fields: [personnelId], references: [id])
+  stationId     String
+  station       Station   @relation(fields: [stationId], references: [id])
+  shiftPlatoonId String?
+  rankId        String?
+  startDate     DateTime?
+  endDate       DateTime?
+  assignmentType String?
+  reason        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdBy     String?
+  updatedBy     String?
+  isDeleted     Boolean   @default(false)
+}
+
+model Certification {
+  id          String @id @default(uuid())
+  tenantId    String
+  name        String
+  category    String
+  validityMonths Int?
+  isRequired  Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  personnel   PersonnelCertification[]
+}
+
+model PersonnelCertification {
+  id              String @id @default(uuid())
+  tenantId        String
+  personnelId     String
+  certificationId String
+  personnel       Personnel @relation(fields: [personnelId], references: [id])
+  certification   Certification @relation(fields: [certificationId], references: [id])
+  issuedAt        DateTime?
+  expiresAt       DateTime?
+  status          String @default("Valid")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String?
+  updatedBy       String?
+  isDeleted       Boolean @default(false)
+}
+
+model CourseCategory {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Course {
+  id                     String   @id @default(uuid())
+  tenantId               String
+  tenant                 Tenant   @relation(fields: [tenantId], references: [id])
+  title                  String
+  code                   String?
+  category               String
+  description            String?
+  deliveryType           String?
+  durationHours          Int?
+  requiredForRanks       String[]
+  requiredForRoles       String[]
+  requiredCertifications String[]
+  relatedIncidentTypes   String[]
+  relatedAssets          String[]
+  relatedPreventionAreas String[]
+  complianceCriticality  String?
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  sessions               CourseSession[]
+  assignments            TrainingAssignment[]
+}
+
+model CourseSession {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  tenant             Tenant   @relation(fields: [tenantId], references: [id])
+  courseId           String
+  course             Course   @relation(fields: [courseId], references: [id])
+  trainerPersonnelId String
+  trainer            Personnel? @relation(fields: [trainerPersonnelId], references: [id])
+  stationId          String?
+  station            Station? @relation(fields: [stationId], references: [id])
+  startDateTime      DateTime
+  endDateTime        DateTime
+  capacity           Int
+  deliveryLocation   String?
+  status             String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  attendance         TrainingAttendance[]
+}
+
+model TrainingAssignment {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  courseId         String
+  course           Course   @relation(fields: [courseId], references: [id])
+  sessionId        String?
+  session          CourseSession? @relation(fields: [sessionId], references: [id])
+  personnelId      String
+  personnel        Personnel @relation(fields: [personnelId], references: [id])
+  assignedBy       String?
+  assignmentReason String?
+  priority         String?
+  dueDate          DateTime?
+  status           String   @default("Assigned")
+  completedAt      DateTime?
+  score            Float?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  attendance       TrainingAttendance[]
+  outcomes         TrainingOutcome[]
+}
+
+model TrainingAttendance {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  sessionId        String
+  session          CourseSession @relation(fields: [sessionId], references: [id])
+  personnelId      String
+  personnel        Personnel? @relation(fields: [personnelId], references: [id])
+  assignmentId     String?
+  assignment       TrainingAssignment? @relation(fields: [assignmentId], references: [id])
+  attendanceStatus TrainingAttendanceStatus
+  checkInTime      DateTime?
+  checkOutTime     DateTime?
+  participationScore Float?
+  instructorNotes  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model CertificationRenewal {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  personnelId      String
+  personnel        Personnel @relation(fields: [personnelId], references: [id])
+  certificationId  String
+  certification    Certification @relation(fields: [certificationId], references: [id])
+  renewalDate      DateTime
+  newExpiryDate    DateTime?
+  status           String
+  completedBy      String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model TrainingNeedAssessment {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  tenant                Tenant   @relation(fields: [tenantId], references: [id])
+  title                 String
+  needType              String
+  sourceType            String
+  sourceEntityId        String?
+  stationId             String?
+  station               Station? @relation(fields: [stationId], references: [id])
+  requiredCourseId      String?
+  requiredCertificationId String?
+  severity              String
+  priority              String
+  description           String
+  evidenceSummary       String
+  recommendedAction     String
+  readinessImpact       Int
+  status                String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model TrainerRecommendation {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  tenant                Tenant   @relation(fields: [tenantId], references: [id])
+  trainingNeedAssessmentId String
+  courseId              String
+  trainerPersonnelId    String
+  suitabilityScore      Float
+  reasonSummary         String
+  availabilityScore     Float
+  expertiseScore        Float
+  performanceScore      Float
+  workloadScore         Float
+  createdAt             DateTime @default(now())
+}
+
+model TraineeRecommendation {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  tenant                Tenant   @relation(fields: [tenantId], references: [id])
+  trainingNeedAssessmentId String
+  courseId              String
+  personnelId           String
+  suitabilityScore      Float
+  gapReason             String
+  urgencyScore          Float
+  readinessImpactScore  Float
+  stationCoverageImpact String
+  createdAt             DateTime @default(now())
+}
+
+model TrainingOutcome {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  tenant             Tenant   @relation(fields: [tenantId], references: [id])
+  assignmentId       String
+  assignment         TrainingAssignment @relation(fields: [assignmentId], references: [id])
+  personnelId        String
+  personnel          Personnel @relation(fields: [personnelId], references: [id])
+  courseId           String
+  course             Course   @relation(fields: [courseId], references: [id])
+  preAssessmentScore Float?
+  postAssessmentScore Float?
+  passed             Boolean
+  improvementScore   Float?
+  instructorFeedback String?
+  readinessImpact    Int
+  createdAt          DateTime @default(now())
+}
+
+model InstructorProfile {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  personnelId      String   @unique
+  personnel        Personnel @relation(fields: [personnelId], references: [id])
+  bio              String?
+  specialties      String[]
+  certifications   String[]
+  teachingHistory  Int      @default(0)
+  availability     String?
+  workloadRisk     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Shift { id String @id @default(uuid()) tenantId String name String shiftDate DateTime shiftCode String startsAt DateTime endsAt DateTime battalion String assignments ShiftAssignment[] openShifts OpenShift[] createdAt DateTime @default(now()) }
+model ShiftAssignment { id String @id @default(uuid()) tenantId String shiftId String personnelId String stationId String roleOnShift String status String @default("Assigned") shift Shift @relation(fields: [shiftId], references: [id]) personnel Personnel @relation(fields: [personnelId], references: [id]) station Station @relation(fields: [stationId], references: [id]) }
+model StaffingRule { id String @id @default(uuid()) tenantId String stationId String? roleName String minimumCount Int requiredCertifications String[] isActive Boolean @default(true) }
+model OpenShift { id String @id @default(uuid()) tenantId String shiftId String stationId String roleNeeded String requiredCertifications String[] priority Priority @default(NORMAL) status String @default("Open") shift Shift @relation(fields: [shiftId], references: [id]) }
+model ShiftTradeRequest { id String @id @default(uuid()) tenantId String requesterId String targetPersonnelId String? shiftId String status String @default("Pending") reason String? createdAt DateTime @default(now()) }
+model LeaveRequest { id String @id @default(uuid()) tenantId String personnelId String startsAt DateTime endsAt DateTime leaveType String status String @default("Pending") reason String? createdAt DateTime @default(now()) }
+model OvertimeRecord { id String @id @default(uuid()) tenantId String personnelId String personnel Personnel @relation(fields: [personnelId], references: [id]) hours Decimal reason String? date DateTime createdAt DateTime @default(now()) }
+model AvailabilityRecord { id String @id @default(uuid()) tenantId String personnelId String personnel Personnel @relation(fields: [personnelId], references: [id]) date DateTime status String notes String? }
+
+model Incident { id String @id @default(uuid()) tenantId String tenant Tenant @relation(fields: [tenantId], references: [id]) stationId String? station Station? @relation(fields: [stationId], references: [id]) incidentNumber String @unique incidentType String recordType String? reportNumber String? patientCount Int? assignedTo String? status IncidentStatus @default(DRAFT) qaStatus String @default("Not Reviewed") qaReviewedAt DateTime? location String? city String? latitude Decimal? longitude Decimal? dispatchAt DateTime? arrivalAt DateTime? clearedAt DateTime? lastUpdatedAt DateTime? turnaroundMinutes Int? cadSourceId String? source String? nerisStatus String? epcrStatus String? nerisReady Boolean @default(false) epcrLinked Boolean @default(false) narrativeComplete Boolean @default(false) attachmentsComplete Boolean @default(false) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt units IncidentUnit[] personnel IncidentPersonnel[] timeline IncidentTimelineEvent[] narratives IncidentNarrative[] qaReviews IncidentQaReview[] attachments IncidentAttachment[] epcrLinks EpcrLink[] nerisExports NerisExportLog[] dataQualityIssues IncidentDataQualityIssue[] duplicateCandidates IncidentDuplicateCandidate[] cadImports CadImportLog[] }
+model IncidentUnit { id String @id @default(uuid()) tenantId String incidentId String apparatusId String? unitName String role String? incident Incident @relation(fields: [incidentId], references: [id]) apparatus Apparatus? @relation(fields: [apparatusId], references: [id]) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt }
+model IncidentPersonnel { id String @id @default(uuid()) tenantId String incidentId String personnelId String roleAtIncident String incident Incident @relation(fields: [incidentId], references: [id]) personnel Personnel @relation(fields: [personnelId], references: [id]) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt }
+model IncidentTimelineEvent { id String @id @default(uuid()) tenantId String incidentId String incident Incident @relation(fields: [incidentId], references: [id]) eventTime DateTime eventType String notes String? createdAt DateTime @default(now()) }
+model IncidentNarrative { id String @id @default(uuid()) tenantId String incidentId String incident Incident @relation(fields: [incidentId], references: [id]) authorName String narrative String createdAt DateTime @default(now()) }
+model IncidentQaReview { id String @id @default(uuid()) tenantId String incidentId String incident Incident @relation(fields: [incidentId], references: [id]) reviewerName String status String notes String? reviewedAt DateTime @default(now()) createdAt DateTime @default(now()) }
+model IncidentAttachment { id String @id @default(uuid()) tenantId String incidentId String incident Incident @relation(fields: [incidentId], references: [id]) fileName String fileUrl String? fileType String? createdAt DateTime @default(now()) }
+model EpcrLink { id String @id @default(uuid()) tenantId String incidentId String incident Incident @relation(fields: [incidentId], references: [id]) externalEpcrId String vendorName String syncStatus String accessRestricted Boolean @default(true) hipaaWarning Boolean @default(true) sensitiveAccessLogCount Int @default(0) lastAccessedAt DateTime? lastSyncedAt DateTime? }
+model NerisMapping { id String @id @default(uuid()) tenantId String internalField String nerisField String required Boolean @default(false) validationRule String? validationStatus String? exportReadiness Int? lastExportedAt DateTime? isActive Boolean @default(true) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt }
+model NerisExportLog { id String @id @default(uuid()) tenantId String incidentId String incident Incident @relation(fields: [incidentId], references: [id]) status String payload Json? exportedAt DateTime @default(now()) createdAt DateTime @default(now()) }
+model CadImportLog { id String @id @default(uuid()) tenantId String incidentId String? incident Incident? @relation(fields: [incidentId], references: [id]) sourceSystem String externalId String status String payload Json? importedAt DateTime @default(now()) createdAt DateTime @default(now()) }
+model IncidentDataQualityIssue { id String @id @default(uuid()) tenantId String incidentId String incident Incident @relation(fields: [incidentId], references: [id]) category String severity Priority status String @default("Open") fieldName String? issueDescription String resolutionNotes String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt }
+model IncidentDuplicateCandidate { id String @id @default(uuid()) tenantId String incidentId String incident Incident @relation(fields: [incidentId], references: [id]) candidateIncidentId String candidateIncidentNumber String confidence Decimal qualitySignals Json? status String @default("Open") createdAt DateTime @default(now()) updatedAt DateTime @updatedAt }
+
+model ApparatusType {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  name                String
+  category            String
+  requiredCrewCount   Int      @default(4)
+  requiresDriverOperator Boolean @default(true)
+  requiresParamedic   Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  isDeleted           Boolean  @default(false)
+}
+
+model Apparatus {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  stationId            String?
+  station              Station? @relation(fields: [stationId], references: [id])
+  apparatusTypeId      String?
+  apparatusTypeRef     ApparatusType? @relation(fields: [apparatusTypeId], references: [id])
+  unitNumber           String   @unique
+  callSign             String?
+  apparatusType        String
+  make                 String?
+  model                String?
+  year                 Int?
+  vin                  String?
+  licensePlate         String?
+  mileage              Int?
+  engineHours          Int?
+  status               ReadinessStatus @default(READY)
+  readinessScore       Int      @default(95)
+  lastInspectionDate   DateTime?
+  nextInspectionDue    DateTime?
+  lastMaintenanceDate  DateTime?
+  nextMaintenanceDue   DateTime?
+  assignedCrewShift    String?
+  notes                String?
+  createdBy            String?
+  updatedBy            String?
+  isDeleted            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  incidents            IncidentUnit[]
+  maintenanceEvents    MaintenanceEvent[]
+  preventiveSchedules  PreventiveMaintenanceSchedule[]
+}
+
+model Asset {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  tenant               Tenant   @relation(fields: [tenantId], references: [id])
+  assetTag             String   @unique
+  name                 String
+  category             String
+  subcategory          String?
+  serialNumber         String?
+  manufacturer         String?
+  model                String?
+  purchaseDate         DateTime?
+  warrantyExpiryDate   DateTime?
+  usefulLifeMonths     Int?
+  status               ReadinessStatus @default(READY)
+  condition            String?
+  stationId            String?
+  apparatusId          String?
+  assignedPersonnelId  String?
+  locationType         String?
+  locationDescription  String?
+  readinessImpact      Int      @default(0)
+  replacementCost      Decimal?
+  notes                String?
+  createdBy            String?
+  updatedBy            String?
+  isDeleted            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model EquipmentCategory {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  name                String
+  description         String?
+  readinessCriticality Priority @default(NORMAL)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  isDeleted           Boolean  @default(false)
+}
+
+model InventoryItem {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  stationId            String?
+  station              Station? @relation(fields: [stationId], references: [id])
+  apparatusId          String?
+  apparatus            Apparatus? @relation(fields: [apparatusId], references: [id])
+  vendorId             String?
+  sku                  String
+  name                 String
+  category             String
+  unitOfMeasure        String
+  quantityOnHand       Int
+  reorderPoint         Int
+  reorderQuantity      Int?
+  maxStockLevel        Int?
+  expirationDate       DateTime?
+  lotNumber            String?
+  readinessCriticality Priority @default(NORMAL)
+  status               String
+  createdBy            String?
+  updatedBy            String?
+  isDeleted            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  transactions         InventoryTransaction[]
+}
+
+model InventoryTransaction {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  inventoryItemId      String
+  inventoryItem        InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  transactionType      String
+  quantity             Int
+  fromStationId        String?
+  toStationId          String?
+  apparatusId          String?
+  performedByPersonnelId String?
+  reason               String?
+  referenceType        String?
+  referenceId          String?
+  transactionDate      DateTime
+  createdAt            DateTime @default(now())
+}
+
+model MaintenanceEvent {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  apparatusId          String?
+  apparatus            Apparatus? @relation(fields: [apparatusId], references: [id])
+  assetId              String?
+  title                String
+  description          String?
+  maintenanceType      String?
+  status               String
+  priority             Priority @default(NORMAL)
+  reportedByPersonnelId String?
+  assignedToPersonnelId String?
+  vendorId             String?
+  reportedDate         DateTime
+  scheduledDate        DateTime?
+  startedDate          DateTime?
+  completedDate        DateTime?
+  estimatedCost        Decimal?
+  actualCost           Decimal?
+  downtimeHours        Decimal?
+  resolutionNotes      String?
+  createdBy            String?
+  updatedBy            String?
+  isDeleted            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model PreventiveMaintenanceSchedule {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  apparatusId          String?
+  apparatus            Apparatus? @relation(fields: [apparatusId], references: [id])
+  assetId              String?
+  maintenanceName      String
+  frequencyType        String
+  frequencyValue       Int
+  lastCompletedDate    DateTime?
+  nextDueDate          DateTime
+  status               String
+  assignedToPersonnelId String?
+  createdBy            String?
+  updatedBy            String?
+  isDeleted            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Vendor {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  name                 String
+  vendorType           String
+  contactName          String?
+  email                String?
+  phone                String?
+  address              String?
+  serviceCategories    String[]
+  preferredVendor      Boolean  @default(false)
+  status               String
+  createdBy            String?
+  updatedBy            String?
+  isDeleted            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model PurchaseReorderRecommendation {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  inventoryItemId      String
+  inventoryItem        InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  stationId            String?
+  apparatusId          String?
+  recommendedQuantity  Int
+  reason               String
+  priority             Priority @default(NORMAL)
+  estimatedCost        Decimal?
+  vendorId             String?
+  vendor               Vendor? @relation(fields: [vendorId], references: [id])
+  status               String
+  createdBy            String?
+  updatedBy            String?
+  isDeleted            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model AssetReadinessSnapshot {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  stationId            String?
+  apparatusId          String?
+  snapshotDate         DateTime
+  apparatusReadinessScore Int
+  equipmentReadinessScore Int
+  inventoryReadinessScore Int
+  maintenanceRiskScore Int
+  overallAssetReadinessScore Int
+  riskLevel            String
+  evidenceSummary      String
+  createdBy            String?
+  updatedBy            String?
+  isDeleted            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+}
+
+model Property { id String @id @default(uuid()) tenantId String tenant Tenant @relation(fields: [tenantId], references: [id]) name String address String city String occupancyType String riskLevel String stationArea String? latitude Decimal? longitude Decimal? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt inspections Inspection[] permits Permit[] preplans Preplan[] violations Violation[] }
+model Occupancy { id String @id @default(uuid()) tenantId String propertyId String occupancyName String occupantLoad Int? riskLevel String notes String? }
+model Inspection { id String @id @default(uuid()) tenantId String propertyId String stationId String? property Property @relation(fields: [propertyId], references: [id]) station Station? @relation(fields: [stationId], references: [id]) inspectionType String status InspectionStatus @default(SCHEDULED) scheduledAt DateTime inspectorName String? checklistItems InspectionChecklistItem[] violations Violation[] documents PreventionDocument[] }
+model InspectionChecklistItem { id String @id @default(uuid()) tenantId String inspectionId String inspection Inspection @relation(fields: [inspectionId], references: [id]) label String status String notes String? }
+model Violation { id String @id @default(uuid()) tenantId String propertyId String inspectionId String? property Property @relation(fields: [propertyId], references: [id]) inspection Inspection? @relation(fields: [inspectionId], references: [id]) codeReference String description String status String @default("Open") correctiveAction String? dueAt DateTime? }
+model Permit { id String @id @default(uuid()) tenantId String propertyId String property Property @relation(fields: [propertyId], references: [id]) permitNumber String @unique permitType String status PermitStatus @default(SUBMITTED) submittedAt DateTime @default(now()) expiresAt DateTime? }
+model Preplan { id String @id @default(uuid()) tenantId String propertyId String property Property @relation(fields: [propertyId], references: [id]) title String summary String hazards String[] hydrantNotes String? updatedAt DateTime @updatedAt }
+model Hydrant { id String @id @default(uuid()) tenantId String identifier String address String? latitude Decimal? longitude Decimal? flowRate Int? status String @default("Active") }
+model Hazard { id String @id @default(uuid()) tenantId String propertyId String? hazardType String description String severity String }
+model PreventionContact { id String @id @default(uuid()) tenantId String propertyId String? name String role String? email String? phone String? }
+model PreventionDocument { id String @id @default(uuid()) tenantId String inspectionId String? inspection Inspection? @relation(fields: [inspectionId], references: [id]) fileName String fileUrl String? documentType String createdAt DateTime @default(now()) }
+
+model SavedReport { id String @id @default(uuid()) tenantId String name String module String definition Json createdBy String? createdAt DateTime @default(now()) exports ReportExport[] }
+model ReportDefinition {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  module      String
+  definition  Json
+  createdBy   String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isDeleted   Boolean  @default(false)
+}
+model ReportExport { id String @id @default(uuid()) tenantId String reportId String report SavedReport @relation(fields: [reportId], references: [id]) format String status String fileUrl String? createdAt DateTime @default(now()) }
+model DataQualityCheck { id String @id @default(uuid()) tenantId String module String checkName String severity Priority status String affectedRecordId String? message String createdAt DateTime @default(now()) }
+model DuplicateRecord { id String @id @default(uuid()) tenantId String entityName String sourceRecordId String possibleDuplicateId String confidence Decimal status String @default("Open") createdAt DateTime @default(now()) }
+model AnalyticsSnapshot { id String @id @default(uuid()) tenantId String snapshotDate DateTime metrics Json createdAt DateTime @default(now()) }
+
+model IntegrationSystem { id String @id @default(uuid()) tenantId String name String systemType String status IntegrationStatus @default(HEALTHY) exchangeMethod ExchangeMethod apiBaseUrl String? authMethod String? rateLimitPerMinute Int? lastSyncAt DateTime? logs IntegrationLog[] mappings FieldMapping[] endpoints ApiEndpointExample[] }
+model IntegrationLog { id String @id @default(uuid()) tenantId String integrationId String integration IntegrationSystem @relation(fields: [integrationId], references: [id]) status String message String payload Json? durationMs Int? createdAt DateTime @default(now()) }
+model FieldMapping { id String @id @default(uuid()) tenantId String integrationId String integration IntegrationSystem @relation(fields: [integrationId], references: [id]) sourceField String targetField String required Boolean @default(false) transformRule String? }
+model ApiEndpointExample { id String @id @default(uuid()) tenantId String integrationId String integration IntegrationSystem @relation(fields: [integrationId], references: [id]) method String path String description String requestExample Json? responseExample Json? }
+
+model AiInsight { id String @id @default(uuid()) tenantId String category String title String summary String severity Priority confidenceScore Decimal dataSources String[] recommendedActions String[] status String @default("Open") createdAt DateTime @default(now()) resolvedAt DateTime? actions AiInsightAction[] }
+model AiInsightAction { id String @id @default(uuid()) tenantId String insightId String insight AiInsight @relation(fields: [insightId], references: [id]) actionText String status String @default("Suggested") createdAt DateTime @default(now()) }
+model AiQuestionLog { id String @id @default(uuid()) tenantId String userId String? question String answer String? createdAt DateTime @default(now()) }
+
+model Notification { id String @id @default(uuid()) tenantId String userId String? title String message String notificationType String isRead Boolean @default(false) createdAt DateTime @default(now()) }
+model AuditLog { id String @id @default(uuid()) tenantId String tenant Tenant @relation(fields: [tenantId], references: [id]) userId String? user User? @relation(fields: [userId], references: [id]) action String entityName String entityId String? before Json? after Json? ipAddress String? createdAt DateTime @default(now()) }
+model SupportTicket { id String @id @default(uuid()) tenantId String ticketNumber String @unique title String description String severity Priority status SupportStatus @default(OPEN) requesterName String? assignedTo String? slaDueAt DateTime? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt escalations EscalationLog[] }
+model SlaPolicy { id String @id @default(uuid()) tenantId String severity Priority responseMinutes Int resolutionMinutes Int isActive Boolean @default(true) }
+model EscalationLog { id String @id @default(uuid()) tenantId String ticketId String ticket SupportTicket @relation(fields: [ticketId], references: [id]) level Int reason String createdAt DateTime @default(now()) }
+model KnowledgeBaseArticle { id String @id @default(uuid()) tenantId String title String category String body String isPublished Boolean @default(true) createdAt DateTime @default(now()) }
+model SystemStatusEvent { id String @id @default(uuid()) tenantId String title String status String message String startedAt DateTime endedAt DateTime? }

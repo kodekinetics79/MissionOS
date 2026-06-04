@@ -1,0 +1,1 @@
+export { getAuditLogs } from './platformClient';

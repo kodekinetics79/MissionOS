@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: commandcore-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: commandcore360
+      POSTGRES_USER: commandcore
+      POSTGRES_PASSWORD: commandcore
+    ports:
+      - "5432:5432"
+    volumes:
+      - commandcore_pg:/var/lib/postgresql/data
+volumes:
+  commandcore_pg:

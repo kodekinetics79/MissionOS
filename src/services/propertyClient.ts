@@ -1,0 +1,1 @@
+export { getProperties } from './platformClient';

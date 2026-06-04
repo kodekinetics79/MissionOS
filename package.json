@@ -1,0 +1,47 @@
+{
+  "scripts": {
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\"",
+    "build": "npm run build:web && npm run build:api",
+    "preview": "vite preview --host 0.0.0.0 --port 9911",
+    "dev:web": "vite --host 0.0.0.0 --port 9911",
+    "dev:api": "tsx watch server/src/index.ts",
+    "build:web": "tsc -b && vite build",
+    "build:api": "tsc -p server/tsconfig.json",
+    "db:generate": "tsx server/src/scripts/initDb.ts",
+    "db:migrate": "tsx server/src/scripts/initDb.ts",
+    "db:seed": "tsx server/src/scripts/initDb.ts",
+    "db:studio": "node -e \"console.log('SQLite database at data/missionos.sqlite')\"",
+    "api": "node server/dist/index.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "typescript": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "lucide-react": "latest",
+    "recharts": "latest",
+    "@prisma/client": "latest",
+    "bcryptjs": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "helmet": "latest",
+    "jsonwebtoken": "latest",
+    "morgan": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@types/bcryptjs": "latest",
+    "@types/cors": "latest",
+    "@types/express": "latest",
+    "@types/jsonwebtoken": "latest",
+    "@types/morgan": "latest",
+    "@types/node": "latest",
+    "concurrently": "latest",
+    "prisma": "latest",
+    "tsx": "latest"
+  }
+}
