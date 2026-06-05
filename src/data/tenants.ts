@@ -34,18 +34,19 @@ export interface ModuleDef {
 // Module registry. navIds tie a configurable module to the sidebar items it gates,
 // so toggling a module actually changes what the tenant sees.
 export const MODULE_REGISTRY: ModuleDef[] = [
-  { key: 'records', label: 'Records & Interoperability', layer: 'Core Compliance', navIds: ['rms'] },
-  { key: 'lms', label: 'LMS / Training', layer: 'Core Compliance', navIds: ['learning'] },
-  { key: 'staffing', label: 'Staffing & Scheduling', layer: 'Core Compliance', navIds: ['staffing'] },
+  { key: 'records', label: 'Response & Records', layer: 'Core Compliance', navIds: ['rms', '/rms-neris', '/epcr-readiness', '/mobile-field-mode', 'incident-center', 'incident-detail', 'incident-edit', 'incidents'] },
+  { key: 'workflow', label: 'Workflows & Approvals', layer: 'Core Compliance', navIds: ['incident-qa', 'incident-neris', 'incident-export', 'incident-epcr', 'incident-cad', 'incident-quality', 'requirement-alignment'] },
+  { key: 'lms', label: 'Learning & Certifications', layer: 'Core Compliance', navIds: ['learning'] },
+  { key: 'staffing', label: 'Staffing & Coverage', layer: 'Core Compliance', navIds: ['staffing'] },
   { key: 'personnel', label: 'Personnel & Performance', layer: 'Core Compliance', navIds: ['personnel360', 'performance-goals'] },
-  { key: 'assets', label: 'Asset & Inventory', layer: 'Core Compliance', navIds: ['assets', 'maintenance'] },
-  { key: 'prevention', label: 'Prevention / Inspections / Permitting / Preplans', layer: 'Core Compliance', navIds: ['prevention', 'prevention-inspections'] },
-  { key: 'analytics', label: 'Analytics / Reporting', layer: 'Core Compliance', navIds: ['analytics', 'analytics-quality'] },
-  { key: 'stations', label: 'Station Readiness', layer: 'Core Compliance', navIds: ['stations'] },
+  { key: 'assets', label: 'Assets & Logistics', layer: 'Core Compliance', navIds: ['assets', 'apparatusRegistry', 'apparatus360', 'stationInventory', 'maintenance', 'preventive', 'transactions', 'reorder', 'risks'] },
+  { key: 'prevention', label: 'Community Risk & Prevention', layer: 'Core Compliance', navIds: ['prevention', '/prevention-inspections', '/permits', '/preplans', '/hydrants-gis', 'prevention-properties', 'prevention-property', 'prevention-violations', 'prevention-preplan', 'prevention-hydrants', 'prevention-risks', 'prevention-prioritization'] },
+  { key: 'analytics', label: 'Performance & Intelligence', layer: 'Core Compliance', navIds: ['analytics', 'analytics-quality', '/report-builder'] },
+  { key: 'stations', label: 'Station Readiness', layer: 'Core Compliance', navIds: ['stations', 'station360'] },
 
-  { key: 'mission-control', label: 'Mission Control / AI Readiness', layer: 'Advanced Intelligence', navIds: ['advisor'] },
-  { key: 'workforce', label: 'Workforce Performance & Planning', layer: 'Advanced Intelligence', navIds: ['workforce-performance'] },
-  { key: 'integration', label: 'API Integration Layer', layer: 'Advanced Intelligence', navIds: ['integrations'] },
+  { key: 'mission-control', label: 'Command Center Intelligence', layer: 'Advanced Intelligence', navIds: ['advisor', 'demo-readiness'] },
+  { key: 'workforce', label: 'Workforce Planning', layer: 'Advanced Intelligence', navIds: ['workforce-performance'] },
+  { key: 'integration', label: 'Platform & Trust', layer: 'Advanced Intelligence', navIds: ['integrations', '/integration-hub', '/security-compliance', '/continuity-center', 'security', 'support', 'tenant-configuration'] },
 
   { key: 'digital-twin', label: 'Digital Twin Scenario Planning', layer: 'Future Expansion', navIds: [], available: false },
   { key: 'ai-briefing', label: 'AI Command Briefing', layer: 'Future Expansion', navIds: [], available: false },
@@ -58,7 +59,7 @@ export const MODULE_REGISTRY: ModuleDef[] = [
 ];
 
 // Platform essentials are always on regardless of tenant config.
-export const ALWAYS_ON_NAV_IDS = ['dashboard', 'daily-briefing', 'requirement-alignment', 'security', 'support', 'tenant-configuration'];
+export const ALWAYS_ON_NAV_IDS = ['dashboard', 'daily-briefing', 'demo-readiness', 'advisor', 'requirement-alignment', 'security', '/security-compliance', '/continuity-center', 'support', 'tenant-configuration'];
 
 // Default enablement per tenant: all available modules on, roadmap add-ons off.
 // Riverton (EMS authority) ships with a fire-prevention-light default to prove

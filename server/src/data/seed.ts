@@ -138,7 +138,7 @@ const roles = [
 }));
 
 const users = [
-  { id: 'user-admin', email: 'admin@westmetro.example', displayName: 'Dana Mitchell', roleCodes: ['District Admin'], personnelId: 'person-1', status: 'Active', mfaEnabled: true, ssoProvider: 'Microsoft Entra ID', isActive: true },
+  { id: 'user-admin', email: 'admin@westmetro.example', displayName: 'Dana Mitchell', roleCodes: ['District Admin'], personnelId: 'person-1', status: 'Active', mfaEnabled: false, ssoProvider: 'Microsoft Entra ID', isActive: true },
   { id: 'user-chief', email: 'chief@westmetro.example', displayName: 'Chris Alvarez', roleCodes: ['Battalion Chief'], personnelId: 'person-4', status: 'Active', mfaEnabled: true, ssoProvider: 'Microsoft Entra ID', isActive: true },
   { id: 'user-training', email: 'training@westmetro.example', displayName: 'Maya Chen', roleCodes: ['Training Admin'], personnelId: 'person-5', status: 'Active', mfaEnabled: true, ssoProvider: 'Microsoft Entra ID', isActive: true },
   { id: 'user-prevention', email: 'prevention@westmetro.example', displayName: 'Jordan Fields', roleCodes: ['Prevention Officer'], personnelId: 'person-49', status: 'Active', mfaEnabled: true, ssoProvider: 'Microsoft Entra ID', isActive: true },
@@ -166,7 +166,7 @@ const users = [
 ].map((user) => ({
   ...user,
   tenantId,
-  passwordHash: bcrypt.hashSync('MissionOS2026!', 10),
+  passwordHash: bcrypt.hashSync('MissionOS2026!', 12),
   isActive: Boolean(user.isActive),
   createdAt: historicalIso(500),
   updatedAt: historicalIso(1),

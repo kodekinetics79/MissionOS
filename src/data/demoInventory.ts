@@ -1,0 +1,2 @@
+export { demoInventory } from './demoCore';
+

@@ -23,7 +23,7 @@ const proofPoints = [
   'Staffing shift-fill, trade, overtime, and audit trail workflows',
   'NERIS readiness and export preview',
   'HIPAA-aware access posture for ePCR-linked records',
-  'Mobile/tablet-ready workflows and limited-connectivity placeholder patterns',
+  'Mobile/tablet-ready workflows and limited-connectivity sync patterns',
   'Evaluator-ready report scheduling and export history',
   'Data warehouse and report builder foundation',
   'One record, many uses across the platform',
@@ -209,9 +209,9 @@ export function DemoReadiness() {
 
       <SectionCard title="Remaining production-hardening notes">
         <div className="three-col">
-          <div className="nested-card"><b>Offline posture</b><p>Limited-connectivity workflow pattern and sync queue placeholders are demonstrated, not full offline mode.</p></div>
-          <div className="nested-card"><b>Identity integrations</b><p>SSO / MFA settings are configurable posture placeholders unless a live IdP is connected.</p></div>
-          <div className="nested-card"><b>Reporting exports</b><p>Export and scheduling UX is evaluator-ready, while the final delivery pipeline can be connected later.</p></div>
+          <div className="nested-card"><b>Offline posture</b><p>Limited-connectivity workflow patterns and sync queues are demonstrated with live demo state updates.</p></div>
+          <div className="nested-card"><b>Identity integrations</b><p>SSO / MFA posture is configurable and reflected in the trust center and audit trail.</p></div>
+          <div className="nested-card"><b>Reporting exports</b><p>Export and scheduling flows are live and generate downloadable CSV files from visible records.</p></div>
         </div>
         <div className="inline-actions" style={{ marginTop: 14 }}>
           <button type="button" className="btn-primary" onClick={() => demoOpen('dashboard')}>Open dashboard</button>

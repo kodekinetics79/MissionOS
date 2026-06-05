@@ -64,12 +64,17 @@ That story now appears consistently in the dashboard, morning briefing, Station 
 - Report scheduling is evaluator-ready with a full schedule table (type, owner, recipients, frequency, delivery, last generated, next run, status, history) and a Generate-now action that writes an export and refreshes history; the final delivery pipeline is still a synchronous simulated export rather than a real async worker queue / email service
 - Offline / low-bandwidth support is shown as a workflow pattern placeholder, not a full offline implementation
 
+## Data Layer & Security (updated 2026-06-04)
+
+- **Database:** the repository now runs on **PostgreSQL (Neon)** in local dev via a pluggable backend (in-memory read cache + durable write-through), auto-selected when `DATABASE_URL` points at a non-local host; otherwise it falls back to a local SQLite file. Durability verified across an API restart.
+- **Security hardening this pass** (see `SECURITY.md` for the full posture and NIST/CJIS alignment): removed hardcoded fallback JWT secrets (forgeable-token fix) and enforced strong env-supplied secrets fail-closed; pinned JWT to HS256 (blocks `alg:none`); added login/refresh brute-force rate limiting; bcrypt cost 12; hardened helmet headers (HSTS, nosniff, frameguard, referrer, no x-powered-by); TLS **certificate verification** to the database; generic error responses (no internal detail leakage) with correct status codes; `.env` removed from git and a `.gitignore` added.
+- These are **alignment** measures, not certification — MissionOS is not SOC 2 / FedRAMP / CJIS-audited. See `SECURITY.md` "Known gaps" and "Operational recommendations."
+
 ## Known Limitations
 
-- The local development runtime uses a SQLite-backed demo store with a Prisma-shaped repository layer
-- Real PostgreSQL migration work is still needed before a production deployment
 - External integrations remain connector-ready placeholders unless a real vendor adapter is connected
-- Security posture language is intentionally careful: NIST CSF-aligned, CJIS-aligned posture placeholder, HIPAA-aware access controls for ePCR-linked data, SOC 2-ready control structure
+- Security is self-assessed alignment (NIST 800-53 / CSF / CJIS / OWASP), not third-party certification; MFA enforcement, refresh-token rotation/revocation, managed secret store, WAF/SIEM, and field-level PII/PHI encryption are deployment-time items (see `SECURITY.md`)
+- The runtime uses a JSON-document repository over Postgres (not a normalized relational schema with Prisma migrations); `schema.prisma` remains a forward-looking target
 
 ## Recommended Next Priorities
 

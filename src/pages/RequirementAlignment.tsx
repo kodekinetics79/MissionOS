@@ -116,6 +116,15 @@ export function RequirementAlignment() {
           <div className="mini-note">MissionOS is built as a configurable, multi-tenant SaaS product: the same platform serves multiple agencies, departments, stations, and jurisdictions, with per-tenant modules, KPIs, workflows, reports, and role-based access.</div>
         </SectionCard>
       ) : null}
+
+      <footer className="product-footer">
+        <span>{PRODUCT.name} — {PRODUCT.tagline}</span>
+        <a className="product-footer-credit" href="https://www.kodekinetics.com" target="_blank" rel="noopener noreferrer">
+          <span className="product-footer-label">Powered by</span>
+          <span className="product-footer-brand">Kode Kinetics</span>
+          <span className="product-footer-url">www.kodekinetics.com</span>
+        </a>
+      </footer>
     </>
   );
 }

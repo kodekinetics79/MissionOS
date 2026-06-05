@@ -1,0 +1,2 @@
+export { demoPermits } from './demoCore';
+

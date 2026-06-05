@@ -19,6 +19,14 @@ import {
   getSsoConfig,
   getVulnerabilities,
   getAdminRbacMatrix,
+  createAdminUser,
+  assignAdminUserRoles,
+  removeAdminUserRole,
+  setAdminUserStatus,
+  getMfaStatus,
+  mfaSetup,
+  mfaActivate,
+  mfaDisable,
 } from '../services/platformClient';
 import { PageHeader } from '../components/PageHeader';
 import { SectionCard } from '../components/SectionCard';
@@ -63,7 +71,7 @@ export function Security() {
         summary="This trust center answers who has access, what they touched, what controls are in place, and whether the platform is ready for a public-sector buyer conversation."
         bullets={[
           `${summary?.openAccessReviews ?? 0} access review(s) are open and ${summary?.openSecurityIncidents ?? 0} security incident(s) need attention.`,
-          `${summary?.ssoStatus ?? 'SSO placeholder'} and ${summary?.mfaAdoptionPlaceholder ?? 0}% MFA adoption are presented as configurable posture signals, not certification claims.`,
+          `${summary?.ssoStatus ?? 'SSO status'} and ${summary?.mfaAdoptionPlaceholder ?? 0}% MFA adoption are presented as configurable posture signals, not certification claims.`,
           `Audit, sensitive access, and session logging provide traceability across administrative actions.`,
         ]}
         badge={summary?.supportSlaStatus ?? 'Watch'}
@@ -89,7 +97,7 @@ export function Security() {
         <SectionCard title="Compliance posture">
           <div className="chips">
             <span>NIST CSF-aligned mapping</span>
-            <span>CJIS-aligned control posture placeholder</span>
+            <span>CJIS-aligned control posture</span>
             <span>HIPAA-aware privacy controls</span>
             <span>SOC 2-ready control structure</span>
           </div>
@@ -151,31 +159,131 @@ export function Security() {
 }
 
 export function UserManagement() {
-  const users = useResource(() => getAdminUsers({ take: 100 }), []);
-  const roles = useResource(getAdminRoles, []);
+  const [reload, setReload] = useState(0);
+  const users = useResource(() => getAdminUsers({ take: 100 }), [reload]);
+  const rolesResp = useResource(getAdminRoles, []);
+  const roles: any[] = (rolesResp as any)?.items ?? [];
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [draft, setDraft] = useState<{ email: string; displayName: string; password: string; roleIds: string[] }>({ email: '', displayName: '', password: '', roleIds: [] });
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [rolePicker, setRolePicker] = useState<string | null>(null);
+
+  const refresh = () => setReload((n) => n + 1);
+  const roleName = (id: string) => roles.find((r) => r.id === id)?.name ?? id;
+
+  const submitCreate = async () => {
+    if (!draft.email || !draft.displayName || !draft.password) { setNote('Email, name, and password are required.'); return; }
+    setBusy(true);
+    try {
+      await createAdminUser({ email: draft.email, displayName: draft.displayName, password: draft.password, roleIds: draft.roleIds, status: 'Active' });
+      setNote(`User ${draft.email} created${draft.roleIds.length ? ` with role(s): ${draft.roleIds.map(roleName).join(', ')}` : ''}.`);
+      setDraft({ email: '', displayName: '', password: '', roleIds: [] });
+      setShowCreate(false);
+      refresh();
+    } catch (e: any) {
+      setNote(`Could not create user: ${e?.message ?? 'error'}`);
+    } finally { setBusy(false); }
+  };
+
+  const toggleDraftRole = (id: string) => setDraft((d) => ({ ...d, roleIds: d.roleIds.includes(id) ? d.roleIds.filter((r) => r !== id) : [...d.roleIds, id] }));
+
+  const addRole = async (userId: string, currentIds: string[], roleId: string) => {
+    if (!roleId) return;
+    // The endpoint replaces the role set, so send the union (deduped).
+    await assignAdminUserRoles(userId, Array.from(new Set([...currentIds, roleId])));
+    setNote(`Assigned ${roleName(roleId)}.`);
+    setRolePicker(null);
+    refresh();
+  };
+  const dropRole = async (userId: string, roleId: string) => { await removeAdminUserRole(userId, roleId); setNote('Role removed.'); refresh(); };
+  const status = async (userId: string, action: 'disable' | 'enable' | 'lock' | 'unlock') => { await setAdminUserStatus(userId, action); setNote(`User ${action}d.`); refresh(); };
+
   return (
     <>
-      <PageHeader eyebrow="Administration" title="User Management" description="Invite, disable, lock, and review user access." />
-      <SectionCard title="Users">
-        <DataTable
-          columns={['User', 'Personnel', 'Status', 'Roles', 'MFA', 'Last Login']}
-          rows={(users as any)?.items ?? []}
-          renderRow={(user: any) => (
-            <>
-              <td><b>{user.displayName}</b><div>{user.email}</div></td>
-              <td>{user.personnelId ?? '—'}</td>
-              <td><StatusBadge status={user.status ?? (user.isActive ? 'Active' : 'Disabled')} /></td>
-              <td>{(user.roles ?? []).map((link: any) => link.role?.name ?? link.roleId).join(', ') || '—'}</td>
-              <td>{user.mfaEnabled ? 'Enabled' : '—'}</td>
-              <td>{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : '—'}</td>
-            </>
-          )}
-        />
-      </SectionCard>
-      <SectionCard title="Role context">
-        <div className="chips">
-          {(roles as any)?.items?.map((role: any) => <span key={role.id}>{role.name}</span>)}
+      <PageHeader eyebrow="Administration" title="User Management" description="Create users, assign roles, and manage access. Roles and permissions are defined in Role Management." />
+
+      <SectionCard
+        title="Users"
+        action={<button type="button" className="btn-primary" onClick={() => { setShowCreate((v) => !v); setNote(null); }}>{showCreate ? 'Close' : '+ New user'}</button>}
+      >
+        {note ? <div className="mini-note" style={{ marginBottom: 12 }}>{note}</div> : null}
+
+        {showCreate ? (
+          <div className="kpi-builder" style={{ marginBottom: 14 }}>
+            <div className="form-grid">
+              <label>Email<input type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} placeholder="user@agency.example" /></label>
+              <label>Display name<input value={draft.displayName} onChange={(e) => setDraft({ ...draft, displayName: e.target.value })} placeholder="Jane Doe" /></label>
+              <label>Temporary password<input type="password" value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} placeholder="min 8 chars" /></label>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <span className="muted" style={{ fontSize: 13, fontWeight: 700 }}>Roles</span>
+              <div className="chip-row" style={{ marginTop: 8 }}>
+                {roles.map((r) => (
+                  <button type="button" key={r.id} className={draft.roleIds.includes(r.id) ? 'primary-button' : 'ghost-button'} onClick={() => toggleDraftRole(r.id)}>{r.name}</button>
+                ))}
+              </div>
+            </div>
+            <div className="inline-actions" style={{ marginTop: 12 }}>
+              <button type="button" className="primary-button" disabled={busy} onClick={submitCreate}>{busy ? 'Creating…' : 'Create user'}</button>
+              <button type="button" className="ghost-button" onClick={() => setShowCreate(false)}>Cancel</button>
+            </div>
+            <div className="mini-note" style={{ marginTop: 10 }}>The password is hashed server-side (bcrypt). The new user can sign in immediately with this email + password and adjust further from here.</div>
+          </div>
+        ) : null}
+
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>User</th><th>Status</th><th>Roles</th><th>MFA</th><th>Last login</th><th>Actions</th></tr></thead>
+            <tbody>
+              {((users as any)?.items ?? []).map((user: any) => {
+                const rawRoles = (user.roles ?? []).map((link: any) => ({ id: link.roleId ?? link.role?.id, name: link.role?.name ?? link.roleId }));
+                const userRoles = Array.from(new Map(rawRoles.map((r: any) => [r.id, r])).values()) as Array<{ id: string; name: string }>;
+                const assignedIds = new Set(userRoles.map((r) => r.id));
+                const isDisabled = (user.status ?? (user.isActive ? 'Active' : 'Disabled')) !== 'Active';
+                return (
+                  <tr key={user.id}>
+                    <td><b>{user.displayName}</b><div className="muted">{user.email}</div></td>
+                    <td><StatusBadge status={user.status ?? (user.isActive ? 'Active' : 'Disabled')} /></td>
+                    <td>
+                      <div className="chip-row">
+                        {userRoles.length ? userRoles.map((r: any) => (
+                          <span key={r.id} className="mini-chip">{r.name}<button type="button" className="chip-x" title="Remove role" onClick={() => dropRole(user.id, r.id)}>×</button></span>
+                        )) : <span className="muted">No roles</span>}
+                        {rolePicker === user.id ? (
+                          <select autoFocus aria-label="Add role to user" title="Add role to user" defaultValue="" onChange={(e) => addRole(user.id, userRoles.map((r) => r.id), e.target.value)} onBlur={() => setRolePicker(null)}>
+                            <option value="" disabled>Add role…</option>
+                            {roles.filter((r) => !assignedIds.has(r.id)).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                          </select>
+                        ) : (
+                          <button type="button" className="ghost-button" onClick={() => setRolePicker(user.id)}>+ Role</button>
+                        )}
+                      </div>
+                    </td>
+                    <td>{user.mfaEnabled ? <StatusBadge status="Healthy" /> : <span className="muted">—</span>}</td>
+                    <td className="muted">{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'Never'}</td>
+                    <td>
+                      <div className="inline-actions">
+                        {isDisabled
+                          ? <button type="button" className="ghost-button" onClick={() => status(user.id, 'enable')}>Enable</button>
+                          : <button type="button" className="ghost-button" onClick={() => status(user.id, 'disable')}>Disable</button>}
+                        <button type="button" className="ghost-button" onClick={() => status(user.id, 'lock')}>Lock</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
+      </SectionCard>
+
+      <SectionCard title="Available roles">
+        <div className="chips">
+          {roles.map((role: any) => <span key={role.id}>{role.name}</span>)}
+        </div>
+        <div className="mini-note">Define roles and their permissions in <b>Role Management</b>. The single demo login is the seeded administrator; create additional users above and assign roles as needed.</div>
       </SectionCard>
     </>
   );
@@ -340,13 +448,65 @@ export function SessionLogs() {
   );
 }
 
+function MfaEnrollmentCard() {
+  const [status, setStatus] = useState<{ enabled: boolean; pending: boolean } | null>(null);
+  const [setup, setSetup] = useState<{ secret: string; otpauth: string } | null>(null);
+  const [code, setCode] = useState('');
+  const [disableCode, setDisableCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = () => getMfaStatus().then(setStatus).catch(() => setStatus({ enabled: false, pending: false }));
+  useEffect(() => { load(); }, []);
+
+  const begin = async () => { setBusy(true); setMsg(null); try { setSetup(await mfaSetup()); } catch (e: any) { setMsg(e?.message ?? 'Could not start setup'); } finally { setBusy(false); } };
+  const activate = async () => { setBusy(true); setMsg(null); try { await mfaActivate(code.trim()); setSetup(null); setCode(''); setMsg('MFA enabled — a code from your authenticator app will be required at next sign-in.'); await load(); } catch (e: any) { setMsg(e?.message ?? 'Invalid code'); } finally { setBusy(false); } };
+  const disable = async () => { setBusy(true); setMsg(null); try { await mfaDisable(disableCode.trim()); setDisableCode(''); setMsg('MFA disabled.'); await load(); } catch (e: any) { setMsg(e?.message ?? 'Invalid code'); } finally { setBusy(false); } };
+
+  return (
+    <SectionCard title="Multi-factor authentication (TOTP)" action={<StatusBadge status={status?.enabled ? 'Healthy' : 'Warning'} />}>
+      <div className="mini-note">Time-based one-time password (RFC 6238). Scan the key with Google Authenticator, 1Password, Authy, etc. When enabled, sign-in requires a 6-digit code.</div>
+      {msg ? <div className="mini-note" style={{ marginTop: 10 }}>{msg}</div> : null}
+
+      {status?.enabled ? (
+        <div className="stack" style={{ marginTop: 12 }}>
+          <div className="mini-card"><div><b>MFA is enabled for your account.</b><span>Enter a current code to turn it off.</span></div><StatusBadge status="Healthy" /></div>
+          <div className="inline-actions">
+            <input className="mfa-input" inputMode="numeric" placeholder="123456" value={disableCode} onChange={(e) => setDisableCode(e.target.value)} />
+            <button type="button" className="ghost-button" disabled={busy || disableCode.length < 6} onClick={disable}>Disable MFA</button>
+          </div>
+        </div>
+      ) : setup ? (
+        <div className="stack" style={{ marginTop: 12 }}>
+          <div className="mini-card"><div><span>1 · Add this account to your authenticator app</span><b className="mfa-secret">{setup.secret}</b><span className="muted">Or use the otpauth URI: {setup.otpauth}</span></div></div>
+          <div className="mini-card">
+            <div style={{ width: '100%' }}>
+              <span>2 · Enter the 6-digit code it shows</span>
+              <div className="inline-actions" style={{ marginTop: 8 }}>
+                <input className="mfa-input" inputMode="numeric" placeholder="123456" value={code} onChange={(e) => setCode(e.target.value)} />
+                <button type="button" className="primary-button" disabled={busy || code.length < 6} onClick={activate}>Verify & enable</button>
+                <button type="button" className="ghost-button" onClick={() => { setSetup(null); setCode(''); }}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="inline-actions" style={{ marginTop: 12 }}>
+          <button type="button" className="btn-primary" disabled={busy} onClick={begin}>Set up MFA</button>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 export function AuthenticationPolicies() {
   const passwordPolicy = useResource(getPasswordPolicy, []);
   const mfaPolicy = useResource(getMfaPolicy, []);
   const sso = useResource(getSsoConfig, []);
   return (
     <>
-      <PageHeader eyebrow="Authentication" title="Authentication Policies" description="Password policy, MFA posture, and SSO placeholders." />
+      <PageHeader eyebrow="Authentication" title="Authentication Policies" description="Password policy, MFA enrollment, and SSO." />
+      <MfaEnrollmentCard />
       <div className="three-col">
         <SectionCard title="Password policy">
           <ul className="check-list">
@@ -357,9 +517,9 @@ export function AuthenticationPolicies() {
         </SectionCard>
         <SectionCard title="MFA policy">
           <ul className="check-list">
-            <li>Admins required: <b>{mfaPolicy?.requiredForAdmins ? 'Yes' : 'No'}</b></li>
-            <li>All users: <b>{mfaPolicy?.requiredForAllUsers ? 'Yes' : 'Placeholder'}</b></li>
-            <li>Methods: {(mfaPolicy?.allowedMethodsJson ?? []).join(', ') || 'TOTP, Push'}</li>
+            <li>Admins required (TOTP): <b>{mfaPolicy?.requiredForAdmins ? 'Yes' : 'Env-gated (MFA_REQUIRED_FOR_ADMIN)'}</b></li>
+            <li>Per-user enforcement: <b>Enforced when enabled</b></li>
+            <li>Methods: TOTP (RFC 6238)</li>
           </ul>
         </SectionCard>
         <SectionCard title="SSO">

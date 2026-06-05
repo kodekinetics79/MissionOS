@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+server/dist/
+*.tsbuildinfo
+
+# Local database files
+data/*.sqlite
+data/*.sqlite-*
+
+# Secrets / environment (never commit real secrets)
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Prisma generated client
+node_modules/.prisma

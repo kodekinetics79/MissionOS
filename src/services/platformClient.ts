@@ -1319,6 +1319,19 @@ export async function removeAdminUserRole(id: string, roleId: string) {
   return apiRequest(`/admin/users/${id}/roles/${roleId}`, { method: 'DELETE' });
 }
 
+export async function getMfaStatus(): Promise<{ enabled: boolean; pending: boolean }> {
+  return (await apiRequestOptional<{ enabled: boolean; pending: boolean }>('/auth/mfa/status')) ?? { enabled: false, pending: false };
+}
+export async function mfaSetup(): Promise<{ secret: string; otpauth: string; issuer: string; account: string }> {
+  return apiRequest('/auth/mfa/setup', { method: 'POST' });
+}
+export async function mfaActivate(token: string) {
+  return apiRequest('/auth/mfa/activate', { method: 'POST', body: JSON.stringify({ token }) });
+}
+export async function mfaDisable(token: string) {
+  return apiRequest('/auth/mfa/disable', { method: 'POST', body: JSON.stringify({ token }) });
+}
+
 export async function getAdminRoles(): Promise<PaginatedResponse<any>> {
   return (await apiRequestOptional<PaginatedResponse<any>>('/admin/roles')) ?? { items: demoRoles as any, page: 1, take: demoRoles.length, total: demoRoles.length };
 }

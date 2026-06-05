@@ -1,0 +1,2 @@
+export { demoInspections } from './demoCore';
+

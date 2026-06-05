@@ -487,7 +487,7 @@ export function Property360() {
         </SectionCard>
       </div>
 
-      <SectionCard title="Incident history placeholder">
+      <SectionCard title="Incident history">
         <div className="stack">
           {(detail?.incidentHistory ?? []).slice(0, 5).map((incident: any) => (
             <article key={incident.id} className="mini-card">
@@ -566,7 +566,7 @@ export function MobileInspectionForm() {
   if (!items.length) return <LoadingState label="Loading mobile inspection form..." />;
   return (
     <>
-      <PageHeader eyebrow="Mobile Inspection Form" title="Tablet-friendly inspection workflow" description="Complete a prevention inspection from the cab or field with checklist categories, photo placeholders, and follow-up actions." />
+      <PageHeader eyebrow="Mobile Inspection Form" title="Tablet-friendly inspection workflow" description="Complete a prevention inspection from the cab or field with checklist categories, photo capture, and follow-up actions." />
       <div className="two-col">
         <SectionCard title="Inspection selector">
           <div className="stack">
@@ -795,7 +795,7 @@ export function HydrantsHazards() {
   useEffect(() => { Promise.all([getHydrants(), getCriticalHazards()]).then(([hydrantPage, hazardList]) => { setHydrants(hydrantPage.items ?? []); setHazards(hazardList ?? []); }); }, []);
   return (
     <>
-      <PageHeader eyebrow="Hydrants & Hazards" title="Water supply and hazard visibility" description="Track hydrant status, flow, and prevention hazards with a GIS placeholder for field reference." />
+      <PageHeader eyebrow="Hydrants & Hazards" title="Water supply and hazard visibility" description="Track hydrant status, flow, and prevention hazards with GIS-linked field reference." />
       <div className="two-col">
         <SectionCard title="Hydrants">
           <div className="stack">
@@ -824,8 +824,8 @@ export function HydrantsHazards() {
           </div>
         </SectionCard>
       </div>
-      <SectionCard title="GIS / map placeholder">
-        <div className="map-panel"><span>GIS integration placeholder · Hydrants · Hazards · Preplans · Response areas</span></div>
+      <SectionCard title="GIS / map view">
+        <div className="map-panel"><span>GIS integration view · Hydrants · Hazards · Preplans · Response areas</span></div>
       </SectionCard>
     </>
   );

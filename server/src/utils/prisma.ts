@@ -2,60 +2,208 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
+import { Pool } from 'pg';
 import { seedData } from '../data/seed.js';
 
 type Row = Record<string, any>;
 type Where = Record<string, any> | undefined;
 
+// ── Durable storage backends ────────────────────────────────────────────────
+// The repository keeps an in-memory read cache so all query / include / where
+// logic stays synchronous and unchanged. The cache is backed by a durable store:
+// Postgres (Neon) when DATABASE_URL points at a non-local host, otherwise a local
+// SQLite file. Switching backends requires no changes to any service or route.
+interface Backend {
+  name: string;
+  init(): Promise<void>;
+  count(): Promise<number>;
+  loadAll(): Promise<Map<string, Row[]>>;
+  upsert(model: string, row: Row): Promise<void>;
+  bulkInsert(all: Map<string, Row[]>): Promise<void>;
+  replaceModel(model: string, kept: Row[]): Promise<void>;
+  truncate(): Promise<void>;
+}
+
 const dbPath = join(process.cwd(), 'data', 'missionos.sqlite');
-mkdirSync(dirname(dbPath), { recursive: true });
-const db = new DatabaseSync(dbPath);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS records (
-    model TEXT NOT NULL,
-    id TEXT NOT NULL,
-    tenantId TEXT,
-    data TEXT NOT NULL,
-    createdAt TEXT,
-    updatedAt TEXT,
-    PRIMARY KEY (model, id)
-  );
-`);
-
-const rowCount = db.prepare('SELECT COUNT(*) as count FROM records').get() as { count: number };
-if ((rowCount?.count ?? 0) === 0) {
-  const insert = db.prepare('INSERT OR REPLACE INTO records (model, id, tenantId, data, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)');
-  for (const [model, rows] of Object.entries(seedData) as Array<[string, Row[]]>) {
-    for (const row of rows) {
-      const id = row.id ?? `${model}-${randomUUID()}`;
-      insert.run(model, String(id), row.tenantId ?? null, JSON.stringify({ ...row, id }), row.createdAt ?? null, row.updatedAt ?? null);
-    }
+class SqliteBackend implements Backend {
+  name = 'sqlite';
+  private db!: DatabaseSync;
+  async init() {
+    mkdirSync(dirname(dbPath), { recursive: true });
+    this.db = new DatabaseSync(dbPath);
+    this.db.exec('CREATE TABLE IF NOT EXISTS records (model TEXT NOT NULL, id TEXT NOT NULL, tenantId TEXT, data TEXT NOT NULL, createdAt TEXT, updatedAt TEXT, PRIMARY KEY (model, id));');
   }
+  async count() { return (this.db.prepare('SELECT COUNT(*) as c FROM records').get() as { c: number })?.c ?? 0; }
+  async loadAll() {
+    const rows = this.db.prepare('SELECT model, data FROM records').all() as Array<{ model: string; data: string }>;
+    const map = new Map<string, Row[]>();
+    for (const r of rows) { const bucket = map.get(r.model) ?? []; bucket.push(JSON.parse(r.data)); map.set(r.model, bucket); }
+    return map;
+  }
+  async upsert(model: string, row: Row) {
+    this.db.prepare('INSERT OR REPLACE INTO records (model, id, tenantId, data, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(model, String(row.id), row.tenantId ?? null, JSON.stringify(row), row.createdAt ?? null, row.updatedAt ?? null);
+  }
+  async bulkInsert(all: Map<string, Row[]>) {
+    const ins = this.db.prepare('INSERT OR REPLACE INTO records (model, id, tenantId, data, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)');
+    for (const [model, rows] of all) for (const row of rows) ins.run(model, String(row.id), row.tenantId ?? null, JSON.stringify(row), row.createdAt ?? null, row.updatedAt ?? null);
+  }
+  async replaceModel(model: string, kept: Row[]) {
+    this.db.prepare('DELETE FROM records WHERE model = ?').run(model);
+    const ins = this.db.prepare('INSERT INTO records (model, id, tenantId, data, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)');
+    for (const row of kept) ins.run(model, String(row.id), row.tenantId ?? null, JSON.stringify(row), row.createdAt ?? null, row.updatedAt ?? null);
+  }
+  async truncate() { this.db.exec('DELETE FROM records'); }
 }
 
-function loadRows(model: string): Row[] {
-  const query = db.prepare('SELECT data FROM records WHERE model = ?');
-  return (query.all(model) as Array<{ data: string }>).map(({ data }) => JSON.parse(data));
+class PostgresBackend implements Backend {
+  name = 'postgres';
+  private pool!: Pool;
+  constructor(private url: string) {}
+  async init() {
+    // TLS is required; certificates are verified by default (set PG_SSL_NO_VERIFY=true
+    // only as a deliberate, documented escape hatch — verifying prevents MITM).
+    const rejectUnauthorized = process.env.PG_SSL_NO_VERIFY !== 'true';
+    this.pool = new Pool({ connectionString: this.url, ssl: { rejectUnauthorized }, max: 5 });
+    await this.pool.query('CREATE TABLE IF NOT EXISTS records (model text NOT NULL, id text NOT NULL, "tenantId" text, data jsonb NOT NULL, "createdAt" text, "updatedAt" text, PRIMARY KEY (model, id));');
+  }
+  async count() { const r = await this.pool.query('SELECT COUNT(*)::int AS c FROM records'); return Number(r.rows[0].c ?? 0); }
+  async loadAll() {
+    const r = await this.pool.query('SELECT model, data FROM records');
+    const map = new Map<string, Row[]>();
+    for (const row of r.rows) { const bucket = map.get(row.model) ?? []; bucket.push(row.data); map.set(row.model, bucket); }
+    return map;
+  }
+  async upsert(model: string, row: Row) {
+    await this.pool.query(
+      'INSERT INTO records (model, id, "tenantId", data, "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (model, id) DO UPDATE SET "tenantId" = EXCLUDED."tenantId", data = EXCLUDED.data, "updatedAt" = EXCLUDED."updatedAt"',
+      [model, String(row.id), row.tenantId ?? null, JSON.stringify(row), row.createdAt ?? null, row.updatedAt ?? null],
+    );
+  }
+  async bulkInsert(all: Map<string, Row[]>) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const CHUNK = 400;
+      for (const [model, rows] of all) {
+        for (let i = 0; i < rows.length; i += CHUNK) {
+          const chunk = rows.slice(i, i + CHUNK);
+          const values: string[] = [];
+          const params: any[] = [];
+          let n = 1;
+          for (const row of chunk) {
+            values.push(`($${n++},$${n++},$${n++},$${n++},$${n++},$${n++})`);
+            params.push(model, String(row.id), row.tenantId ?? null, JSON.stringify(row), row.createdAt ?? null, row.updatedAt ?? null);
+          }
+          await client.query(
+            `INSERT INTO records (model, id, "tenantId", data, "createdAt", "updatedAt") VALUES ${values.join(',')} ON CONFLICT (model, id) DO UPDATE SET data = EXCLUDED.data`,
+            params,
+          );
+        }
+      }
+      await client.query('COMMIT');
+    } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
+  }
+  async replaceModel(model: string, kept: Row[]) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM records WHERE model = $1', [model]);
+      for (const row of kept) {
+        await client.query('INSERT INTO records (model, id, "tenantId", data, "createdAt", "updatedAt") VALUES ($1,$2,$3,$4,$5,$6)', [model, String(row.id), row.tenantId ?? null, JSON.stringify(row), row.createdAt ?? null, row.updatedAt ?? null]);
+      }
+      await client.query('COMMIT');
+    } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
+  }
+  async truncate() { await this.pool.query('TRUNCATE records'); }
 }
 
-function upsertRow(model: string, row: Row) {
-  const statement = db.prepare('INSERT OR REPLACE INTO records (model, id, tenantId, data, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)');
+function selectBackend(): Backend {
+  const url = process.env.DATABASE_URL ?? '';
+  const isPg = /^postgres(ql)?:\/\//.test(url);
+  const isLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
+  if (isPg && !isLocal && process.env.DB_DRIVER !== 'sqlite') return new PostgresBackend(url);
+  return new SqliteBackend();
+}
+
+let backend: Backend = selectBackend();
+const store = new Map<string, Row[]>();
+
+// Reads come from the in-memory store (keeps the sync query engine untouched).
+// Writes update the store AND are persisted durably before the caller's promise
+// resolves — important on serverless, where the process can be frozen the instant
+// a response is sent (a fire-and-forget write would be lost).
+export async function flushWrites() { /* writes are awaited inline; nothing queued */ }
+
+function memUpsert(model: string, row: Row): Row {
   const id = row.id ?? `${model}-${randomUUID()}`;
-  const storedRow = { ...row, id };
-  statement.run(model, String(id), row.tenantId ?? null, JSON.stringify(storedRow), row.createdAt ?? null, row.updatedAt ?? null);
+  const storedRow = { ...row, id: String(id) };
+  const bucket = store.get(model) ?? [];
+  const idx = bucket.findIndex((r) => String(r.id) === storedRow.id);
+  if (idx >= 0) bucket[idx] = storedRow; else bucket.push(storedRow);
+  store.set(model, bucket);
   return storedRow;
 }
 
-function deleteRows(model: string, predicate: (row: Row) => boolean) {
-  const rows = loadRows(model);
+function loadRows(model: string): Row[] {
+  return store.get(model) ?? [];
+}
+
+async function upsertRow(model: string, row: Row) {
+  const storedRow = memUpsert(model, row);
+  await backend.upsert(model, storedRow);
+  return storedRow;
+}
+
+async function deleteRows(model: string, predicate: (row: Row) => boolean) {
+  const rows = store.get(model) ?? [];
   const kept = rows.filter((row) => !predicate(row));
-  db.prepare('DELETE FROM records WHERE model = ?').run(model);
-  const insert = db.prepare('INSERT INTO records (model, id, tenantId, data, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)');
-  for (const row of kept) {
-    insert.run(model, String(row.id), row.tenantId ?? null, JSON.stringify(row), row.createdAt ?? null, row.updatedAt ?? null);
+  const removed = rows.length - kept.length;
+  store.set(model, kept);
+  await backend.replaceModel(model, kept);
+  return removed;
+}
+
+// Populate the in-memory store from seed data (no per-row persistence — the
+// caller persists the whole store in one batched transaction for speed).
+function seedIntoStore() {
+  for (const [model, rows] of Object.entries(seedData) as Array<[string, Row[]]>) {
+    for (const row of rows) memUpsert(model, row);
   }
-  return rows.length - kept.length;
+}
+
+let initialized = false;
+
+// Connect the durable backend, load the cache, and seed if empty. Call this once
+// at server startup (and from the db:seed script with { reset: true }).
+export async function initDb(options: { reset?: boolean } = {}): Promise<string> {
+  if (initialized && !options.reset) return backend.name;
+  try {
+    await backend.init();
+  } catch (err) {
+    if (backend.name === 'postgres') {
+      console.error('[db] Postgres unavailable, falling back to local SQLite:', (err as Error)?.message ?? err);
+      backend = new SqliteBackend();
+      await backend.init();
+    } else {
+      throw err;
+    }
+  }
+  store.clear();
+  if (options.reset) await backend.truncate();
+  const total = options.reset ? 0 : await backend.count();
+  if (total === 0) {
+    seedIntoStore();
+    await backend.bulkInsert(store);
+  } else {
+    const loaded = await backend.loadAll();
+    for (const [model, rows] of loaded) store.set(model, rows);
+  }
+  initialized = true;
+  const records = [...store.values()].reduce((n, b) => n + b.length, 0);
+  console.log(`[db] MissionOS repository ready on ${backend.name} (${records} records).`);
+  return backend.name;
 }
 
 function pickPathValue(row: Row, key: string) {

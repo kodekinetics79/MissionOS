@@ -759,7 +759,7 @@ export function ReportExportCenter() {
                   <td>{entry.requestedAt ? new Date(entry.requestedAt).toLocaleString() : '—'}</td>
                   <td>{entry.completedAt ? new Date(entry.completedAt).toLocaleString() : '—'}</td>
                   <td>{entry.rowCount ?? 0}</td>
-                  <td>{entry.fileUrl ?? 'Queued placeholder'}</td>
+                  <td>{entry.fileUrl ?? 'Queued'}</td>
                 </tr>
               ))}
             </tbody>

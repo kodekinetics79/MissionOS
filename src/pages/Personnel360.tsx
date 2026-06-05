@@ -16,6 +16,7 @@ import { ReadinessScore } from '../components/ReadinessScore';
 import { StatusBadge } from '../components/StatusBadge';
 import { Tabs } from '../components/Tabs';
 import { OperationalBriefing } from '../components/OperationalBriefing';
+import { assignTraining, createAuditLog, createNotification } from '../services/demoOperatingService';
 
 type Personnel360Bundle = {
   personnel: Personnel;
@@ -351,8 +352,8 @@ export function Personnel360() {
             {tab === 'documents' && (
               <div className="stack">
                 <div className="inline-actions">
-                  <button type="button" className="btn-primary"><FileText size={15} /> Upload document placeholder</button>
-                  <button type="button">Add note placeholder</button>
+                  <button type="button" className="btn-primary" onClick={() => { createAuditLog('Upload personnel document', 'Personnel', selectedPersonnel.id); createNotification('Document captured', 'A personnel document was queued for review.', 'info'); }}><FileText size={15} /> Upload document</button>
+                  <button type="button" onClick={() => { createAuditLog('Add personnel note', 'Personnel', selectedPersonnel.id); createNotification('Personnel note added', 'The note was recorded in the demo audit trail.', 'info'); }}>Add note</button>
                 </div>
                 <div className="stack">
                   {bundle.performance.documents.length ? bundle.performance.documents.map((document) => (
@@ -387,9 +388,9 @@ export function Personnel360() {
                   ))}
                 </div>
                 <div className="inline-actions">
-                  <button type="button" className="btn-primary"><ShieldCheck size={15} /> Send to Training</button>
-                  <button type="button"><TrendingUp size={15} /> Send to Staffing</button>
-                  <button type="button"><ShieldAlert size={15} /> Create follow-up</button>
+                  <button type="button" className="btn-primary" onClick={() => { assignTraining(selectedPersonnel.id, bundle.training.recommendedNextTraining?.id ?? bundle.training.assignments[0]?.id ?? 'training-001'); window.dispatchEvent(new CustomEvent('missionos:set-route', { detail: { route: 'learning' } })); }}><ShieldCheck size={15} /> Send to Training</button>
+                  <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('missionos:set-route', { detail: { route: 'staffing' } })); createNotification('Staffing review opened', `${selectedPersonnel.name ?? 'Personnel'} sent to staffing review.`, 'info'); }}><TrendingUp size={15} /> Send to Staffing</button>
+                  <button type="button" onClick={() => { createAuditLog('Create follow-up', 'Personnel', selectedPersonnel.id); createNotification('Follow-up created', 'Supervisor follow-up has been added.', 'warning'); }}><ShieldAlert size={15} /> Create follow-up</button>
                 </div>
               </div>
             )}

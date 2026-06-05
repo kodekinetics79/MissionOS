@@ -1,0 +1,2 @@
+export { demoTraining } from './demoCore';
+

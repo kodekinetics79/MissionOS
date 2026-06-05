@@ -90,6 +90,11 @@ export function Sidebar({
           );
         })}
       </nav>
+      <a className="sidebar-credit" href="https://www.kodekinetics.com" target="_blank" rel="noopener noreferrer">
+        <span className="sidebar-credit-label">Powered by</span>
+        <span className="sidebar-credit-brand">Kode Kinetics</span>
+        <span className="sidebar-credit-url">www.kodekinetics.com</span>
+      </a>
     </aside>
   );
 }

@@ -14,16 +14,19 @@
     "api": "node server/dist/index.js"
   },
   "dependencies": {
-    "@prisma/client": "latest",
+    "@types/pg": "^8.20.0",
     "@vitejs/plugin-react": "latest",
     "bcryptjs": "latest",
     "cors": "latest",
     "dotenv": "latest",
     "express": "latest",
+    "express-rate-limit": "^8.5.2",
     "helmet": "latest",
     "jsonwebtoken": "latest",
     "lucide-react": "latest",
     "morgan": "latest",
+    "otplib": "^12.0.1",
+    "pg": "^8.21.0",
     "react": "latest",
     "react-dom": "latest",
     "recharts": "latest",
@@ -39,12 +42,11 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "concurrently": "latest",
-    "prisma": "latest",
-    "tsx": "latest",
-    "vite": "7.2.7",
     "@vitejs/plugin-react": "4.5.2",
-    "typescript": "^5.9.3"
+    "concurrently": "latest",
+    "tsx": "latest",
+    "typescript": "^5.9.3",
+    "vite": "7.2.7"
   },
   "engines": {
     "node": "22.x"

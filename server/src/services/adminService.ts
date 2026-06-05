@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { prisma } from '../utils/prisma.js';
 import { listAuditLogs as listFoundationAuditLogs, getRbacMatrix as getFoundationRbacMatrix } from './foundationService.js';
 
@@ -208,24 +209,29 @@ export const userAdminService = {
     return prisma.user.findFirst({ where: { tenantId, id }, include: { personnel: true, roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } } });
   },
   async create(tenantId: string, userId: string, data: AnyRecord) {
+    // Hash a plaintext password server-side (bcrypt 12). Never accept or store a
+    // client-supplied hash, and never store plaintext. A user with a password is
+    // Active and can log in; without one they are Invited (SSO/credential later).
+    const passwordHash = data.password ? bcrypt.hashSync(String(data.password), 12) : null;
+    const status = data.status ?? (passwordHash ? 'Active' : 'Invited');
     const created = await prisma.user.create({
       data: {
         tenantId,
         email: data.email,
         displayName: data.displayName,
         personnelId: data.personnelId ?? null,
-        status: data.status ?? 'Invited',
-        lastLoginAt: data.lastLoginAt ?? null,
+        status,
+        lastLoginAt: null,
         mfaEnabled: Boolean(data.mfaEnabled),
         ssoProvider: data.ssoProvider ?? null,
-        passwordHash: data.passwordHash ?? null,
+        passwordHash,
         isDeleted: false,
-        isActive: data.status ? normalizeStatus(data.status) === 'active' : false,
+        isActive: normalizeStatus(status) === 'active',
         createdAt: nowIso(),
         updatedAt: nowIso(),
       },
     });
-    for (const roleId of data.roleIds ?? []) {
+    for (const roleId of Array.from(new Set((data.roleIds ?? []).filter(Boolean)))) {
       await prisma.userRole.create({ data: { tenantId, userId: created.id, roleId, assignedByUserId: userId, assignedAt: nowIso() } });
     }
     await writeAudit(tenantId, userId, 'Admin', 'Created user', 'User', created.id, 'High', null, created);
@@ -251,11 +257,13 @@ export const userAdminService = {
     return updated;
   },
   async assignRoles(tenantId: string, id: string, userId: string, roleIds: string[]) {
+    // Replace the user's role set with the provided (deduplicated) set.
+    const unique = Array.from(new Set(roleIds.filter(Boolean)));
     await prisma.userRole.deleteMany({ where: { tenantId, userId: id } });
-    for (const roleId of roleIds) {
+    for (const roleId of unique) {
       await prisma.userRole.create({ data: { tenantId, userId: id, roleId, assignedByUserId: userId, assignedAt: nowIso() } });
     }
-    await writeAudit(tenantId, userId, 'Admin', 'Assigned roles', 'User', id, 'High', null, { roleIds });
+    await writeAudit(tenantId, userId, 'Admin', 'Assigned roles', 'User', id, 'High', null, { roleIds: unique });
     return userAdminService.get(tenantId, id);
   },
   async removeRole(tenantId: string, id: string, roleId: string, userId: string) {

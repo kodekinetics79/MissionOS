@@ -688,7 +688,7 @@ export function CredentialsWebhooks() {
 
   return (
     <>
-      <PageHeader eyebrow="Public Safety Integration Hub" title="Credentials & Webhooks" description="API keys, OAuth/OIDC credentials, and webhook subscriptions. Secrets are never stored in plain text — masked placeholders only." />
+      <PageHeader eyebrow="Public Safety Integration Hub" title="Credentials & Webhooks" description="API keys, OAuth/OIDC credentials, and webhook subscriptions. Secrets are never stored in plain text — masked values only." />
       <IntegrationSubnav active="integration-credentials" />
       <div className="filter-bar">
         <select aria-label="Select system" value={effectiveId} onChange={(event) => setSystemId(event.target.value)}>

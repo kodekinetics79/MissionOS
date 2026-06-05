@@ -1,10 +1,15 @@
-import { existsSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import 'dotenv/config';
+import { initDb, flushWrites } from '../utils/prisma.js';
 
-const dbPath = join(process.cwd(), 'data', 'missionos.sqlite');
-if (existsSync(dbPath)) {
-  rmSync(dbPath);
-}
-
-require('../utils/prisma.js');
-console.log('MissionOS SQLite database is ready at data/missionos.sqlite');
+// Reseed the MissionOS repository against the configured backend.
+// Postgres (Neon) when DATABASE_URL points at a non-local host, else local SQLite.
+initDb({ reset: true })
+  .then(async (driver) => {
+    await flushWrites();
+    console.log(`MissionOS database seeded on ${driver}.`);
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('MissionOS database seed failed:', err);
+    process.exit(1);
+  });

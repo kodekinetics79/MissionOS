@@ -1,16 +1,14 @@
 import { Search, Zap } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { NotificationBell } from './NotificationBell';
 import { StatusBadge } from './StatusBadge';
-import { RoleSwitcher } from './RoleSwitcher';
+import { CurrentUser } from './CurrentUser';
+import { ThemeToggle } from './ThemeToggle';
 import type { Notification } from '../types';
 
 export function Topbar({
   title,
   subtitle,
-  role,
-  roles,
-  onRoleChange,
   notifications,
   notificationItems,
   searchSlot,
@@ -22,9 +20,6 @@ export function Topbar({
 }: {
   title: string;
   subtitle?: string;
-  role: string;
-  roles: string[];
-  onRoleChange: (role: string) => void;
   notifications?: number;
   notificationItems?: Notification[];
   searchSlot?: ReactNode;
@@ -34,6 +29,15 @@ export function Topbar({
   onQuickAction?: () => void;
   onNotificationOpen?: (notification: Notification) => void;
 }) {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const submitSearch = () => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    localStorage.setItem('missionos.search.query', trimmed);
+    window.dispatchEvent(new CustomEvent('missionos:set-route', { detail: { route: 'search' } }));
+  };
+
   return (
     <header className="topbar">
       <div className="topbar-copy">
@@ -46,12 +50,20 @@ export function Topbar({
         {searchSlot ?? (
           <label className="search-inline">
             <Search size={16} />
-            <input placeholder="Search platform records" />
+            <input
+              value={searchQuery}
+              placeholder="Search platform records"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') submitSearch();
+              }}
+            />
           </label>
         )}
+        <ThemeToggle />
         <NotificationBell count={notifications ?? 0} notifications={notificationItems ?? []} onOpen={onNotificationOpen} />
         {onQuickAction && <button type="button" className="btn-primary quick-action" onClick={onQuickAction}><Zap size={16} />{quickActionLabel ?? 'Quick Action'}</button>}
-        <RoleSwitcher value={role} options={roles} onChange={onRoleChange} />
+        <CurrentUser />
       </div>
     </header>
   );

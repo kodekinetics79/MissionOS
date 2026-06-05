@@ -1,6 +1,5 @@
 import { ReactNode, Suspense, lazy, useEffect, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
-import type { RoleName } from '../types';
 import { ensureDevSession } from '../services/apiClient';
 import { AppShell } from '../layouts/AppShell';
 import { Platform } from '../pages/Platform';
@@ -138,6 +137,19 @@ import {
 } from '../pages/Support';
 import { RequirementAlignment } from '../pages/RequirementAlignment';
 import { TenantConfiguration } from '../pages/TenantConfiguration';
+import {
+  ContinuityCenter,
+  EpcrReadiness,
+  HydrantsGis,
+  IntegrationHubDemo,
+  MobileFieldMode,
+  Permits,
+  Preplans,
+  PreventionInspections,
+  ReportBuilder,
+  RmsNerisReadiness,
+  SecurityCompliance,
+} from '../pages/CompetitiveModules';
 
 const pages: Record<string, ReactNode> = {
   platform: <Platform />,
@@ -168,6 +180,16 @@ const pages: Record<string, ReactNode> = {
   'incident-epcr': <EpcrLinkage />,
   'incident-cad': <CadImportLogs />,
   'incident-quality': <IncidentDataQualityCenter />,
+  '/rms-neris': <RmsNerisReadiness />,
+  '/epcr-readiness': <EpcrReadiness />,
+  '/prevention-inspections': <PreventionInspections />,
+  '/permits': <Permits />,
+  '/preplans': <Preplans />,
+  '/hydrants-gis': <HydrantsGis />,
+  '/mobile-field-mode': <MobileFieldMode />,
+  '/report-builder': <ReportBuilder />,
+  '/security-compliance': <SecurityCompliance />,
+  '/continuity-center': <ContinuityCenter />,
   staffing: <Staffing />,
   'staffing-scheduling': <Staffing />,
   'workforce-performance': <WorkforcePerformance />,
@@ -232,6 +254,7 @@ const pages: Record<string, ReactNode> = {
   'analytics-integrations': <IntegrationAnalytics />,
   integrations: <Integrations />,
   'integration-hub': <Integrations />,
+  '/integration-hub': <IntegrationHubDemo />,
   'integration-systems': <ConnectedSystems />,
   'integration-system': <IntegrationSystem360 />,
   'integration-flow': <DataFlowMonitor />,
@@ -283,13 +306,38 @@ const pages: Record<string, ReactNode> = {
   'support-system': <SystemStatus />,
 };
 
+function getInitialRoute() {
+  if (typeof window === 'undefined') return 'platform';
+  const hashRoute = decodeURIComponent(window.location.hash.slice(1).trim());
+  if (hashRoute) return hashRoute;
+  return window.localStorage.getItem('missionos.route') ?? 'platform';
+}
+
 export function App() {
-  const [route, setRoute] = useState('platform');
-  const [role, setRole] = useState<RoleName>('Battalion Chief');
+  const [route, setRoute] = useState(getInitialRoute);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     ensureDevSession().finally(() => setReady(true));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('missionos.route', route);
+    const nextHash = `#${route.startsWith('/') ? route : route}`;
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+    }
+  }, [route]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const syncFromHash = () => {
+      const nextRoute = decodeURIComponent(window.location.hash.slice(1).trim()) || 'platform';
+      setRoute(nextRoute);
+    };
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
   }, []);
 
   if (!ready) {
@@ -302,7 +350,7 @@ export function App() {
   }
 
   return (
-    <AppShell route={route} setRoute={setRoute} role={role} setRole={setRole}>
+    <AppShell route={route} setRoute={setRoute}>
       <Suspense fallback={<div className="page-loading">Loading module…</div>}>
         {pages[route] ?? pages.platform}
       </Suspense>
