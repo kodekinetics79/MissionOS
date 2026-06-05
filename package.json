@@ -42,6 +42,11 @@
     "concurrently": "latest",
     "prisma": "latest",
     "tsx": "latest",
-    "vite": "^7.3.5"
+    "vite": "7.2.7",
+    "@vitejs/plugin-react": "4.5.2",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }
