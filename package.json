@@ -14,34 +14,34 @@
     "api": "node server/dist/index.js"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "lucide-react": "latest",
-    "recharts": "latest",
     "@prisma/client": "latest",
+    "@vitejs/plugin-react": "latest",
     "bcryptjs": "latest",
     "cors": "latest",
     "dotenv": "latest",
     "express": "latest",
     "helmet": "latest",
     "jsonwebtoken": "latest",
+    "lucide-react": "latest",
     "morgan": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "recharts": "latest",
+    "typescript": "latest",
     "zod": "latest"
   },
   "devDependencies": {
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
     "@types/bcryptjs": "latest",
     "@types/cors": "latest",
     "@types/express": "latest",
     "@types/jsonwebtoken": "latest",
     "@types/morgan": "latest",
     "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
     "concurrently": "latest",
     "prisma": "latest",
-    "tsx": "latest"
+    "tsx": "latest",
+    "vite": "^7.3.5"
   }
 }
