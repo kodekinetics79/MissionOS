@@ -15,6 +15,12 @@ function assertBefore(content: string, specificRoute: string, dynamicRoute: stri
   assert.ok(specific < dynamic, `${specificRoute} must be registered before ${dynamicRoute}`);
 }
 
+test('personnel collection keywords are registered before dynamic id routes', () => {
+  const content = source('index.ts');
+  assertBefore(content, "router.get('/personnel/risks'", "router.get('/personnel/:id'");
+  assertBefore(content, "router.get('/personnel/readiness-summary'", "router.get('/personnel/:id'");
+});
+
 test('prevention collection keywords are registered before dynamic id routes', () => {
   const content = source('prevention.ts');
   assertBefore(content, "router.get('/inspections/prioritized'", "router.get('/inspections/:id'");
