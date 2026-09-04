@@ -33,7 +33,8 @@ jobs:
           cache: npm
 
       - name: Install locked dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
+        timeout-minutes: 5
 
       - name: Core regression tests
         run: npm test
