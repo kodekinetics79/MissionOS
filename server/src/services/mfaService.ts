@@ -13,8 +13,8 @@ function isAdmin(permissions: string[] = []) {
 }
 
 // Whether MFA is *required* for this user (admins, when the policy is enabled).
-// Default OFF so the seeded demo login keeps working; flip MFA_REQUIRED_FOR_ADMIN=true
-// to enforce. `verifyTotp` is always enforced for any user who has MFA enabled.
+// Default OFF for the demo environment. When enabled, auth middleware restricts
+// unenrolled privileged users to MFA enrollment/status/me/logout until activated.
 export function adminMfaRequired(permissions: string[] = [], mfaEnabled = false) {
   if (mfaEnabled) return false;
   return process.env.MFA_REQUIRED_FOR_ADMIN === 'true' && isAdmin(permissions);
@@ -48,11 +48,16 @@ export const mfaService = {
   // Prove possession of the pending secret, then enable MFA.
   async activate(tenantId: string, userId: string, token: string) {
     const user = await prisma.user.findFirst({ where: { tenantId, id: userId } });
-    // Protect the shared demo administrator: enabling MFA on it would break the
-    // password-only auto-login. Enroll a regular user instead to demo MFA.
-    const protectedEmails = (process.env.MFA_PROTECT_EMAILS || 'admin@westmetro.example').split(',').map((s) => s.trim());
+    // The shared demo administrator can be protected from accidental enrollment in
+    // non-production demos. Production NEVER protects a default account: an
+    // operator must explicitly set MFA_PROTECT_EMAILS if they accept that risk.
+    const defaultProtected = process.env.NODE_ENV === 'production' ? '' : 'admin@westmetro.example';
+    const protectedEmails = (process.env.MFA_PROTECT_EMAILS ?? defaultProtected)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (user && protectedEmails.includes(user.email)) {
-      const e: any = new Error('MFA enrollment is disabled for the shared demo administrator. Create a user and enroll them to demonstrate MFA.'); e.status = 400; throw e;
+      const e: any = new Error('MFA enrollment is disabled for this protected demo account. Create a user and enroll them to demonstrate MFA.'); e.status = 400; throw e;
     }
     if (!user?.mfaPendingSecret) throw new Error('No pending MFA enrollment. Start setup first.');
     if (!verifyTotp(user.mfaPendingSecret, token)) {
