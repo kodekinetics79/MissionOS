@@ -20,6 +20,7 @@ import {
 import { asyncHandler } from './utils/asyncHandler.js';
 import { initDb } from './utils/prisma.js';
 import { accessSecret, refreshSecret } from './utils/secrets.js';
+import { replaceUserRolesSafely } from './services/roleAssignmentIntegrityService.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4100);
@@ -138,6 +139,15 @@ app.post(
   '/api/admin/users/:id/roles',
   requirePermission('admin.roles.manage'),
   asyncHandler(validateRoleAssignments),
+  asyncHandler(async (req, res) => {
+    const result = await replaceUserRolesSafely(
+      req.user!.tenantId,
+      String(req.params.id),
+      req.user!.userId,
+      req.body?.roleIds,
+    );
+    res.json({ success: true, data: result, message: 'User roles replaced safely', errors: [] });
+  }),
 );
 app.delete('/api/admin/users/:id/roles/:roleId', requirePermission('admin.roles.manage'));
 
