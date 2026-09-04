@@ -18,8 +18,10 @@ import {
   validateRoleAssignments,
 } from './middleware/tenantGuard.js';
 import { asyncHandler } from './utils/asyncHandler.js';
+import { ok } from './utils/apiResponse.js';
 import { initDb } from './utils/prisma.js';
 import { accessSecret, refreshSecret } from './utils/secrets.js';
+import { getPersonnelReadinessSummary, getPersonnelRisks } from './services/personnelService.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4100);
@@ -99,6 +101,9 @@ app.get('/ready', (_req, res) => {
 
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/refresh', authLimiter);
+// Apply the general API limiter before every app-level override/policy guard as
+// well as the legacy router. Previously the central hardening routes bypassed it.
+app.use('/api', apiLimiter);
 
 // ── Core authorization/tenancy boundary ────────────────────────────────────
 // These guards sit in front of legacy foundation/admin routes so the platform
@@ -116,6 +121,16 @@ app.use('/api/properties', authRequired, requirePermission('prevention.view'));
 app.use('/api/rms', authRequired, requirePermission('incidents.view'));
 app.use('/api/search', authRequired, requirePermission('core.view'));
 app.use('/api/analytics/dashboard', authRequired, requirePermission('analytics.view'));
+
+// Static personnel endpoints must be registered before the legacy
+// `/personnel/:id` route, otherwise Express interprets `risks` or
+// `readiness-summary` as a personnel id.
+app.get('/api/personnel/risks', authRequired, requirePermission('personnel.view'), asyncHandler(async (req, res) => {
+  ok(res, await getPersonnelRisks(req.user!.tenantId), 'Personnel risks');
+}));
+app.get('/api/personnel/readiness-summary', authRequired, requirePermission('personnel.view'), asyncHandler(async (req, res) => {
+  ok(res, await getPersonnelReadinessSummary(req.user!.tenantId), 'Personnel readiness summary');
+}));
 
 // Tenant-admin routes that previously accepted arbitrary tenant/resource ids or
 // trusted broad update payloads. These pre-route gates provide defense in depth
@@ -146,7 +161,7 @@ app.use(
   sanitizeTenantRolePayload,
 );
 
-app.use('/api', apiLimiter, routes);
+app.use('/api', routes);
 app.use(errorHandler);
 
 initDb()
