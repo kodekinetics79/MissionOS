@@ -1,0 +1,41 @@
+name: MissionOS CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'cto/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Test, build and dependency gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Core regression tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Runtime dependency audit
+        run: npm audit --omit=dev --audit-level=high
