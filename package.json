@@ -2,7 +2,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\"",
     "build": "npm run build:web && npm run build:api",
-    "test": "tsx --test server/src/services/authService.test.ts server/src/routes/crud.test.ts",
+    "test": "tsx --test server/src/services/authService.test.ts server/src/routes/crud.test.ts server/src/middleware/tenantGuard.test.ts",
     "check": "npm run test && npm run build",
     "preview": "vite preview --host 0.0.0.0 --port 9911",
     "dev:web": "vite --host 0.0.0.0 --port 9911",
