@@ -20,6 +20,8 @@ import {
 import { asyncHandler } from './utils/asyncHandler.js';
 import { initDb } from './utils/prisma.js';
 import { accessSecret, refreshSecret } from './utils/secrets.js';
+import { replaceUserRolesSafely } from './services/roleAssignmentIntegrityService.js';
+import { runProductionMigrations } from './services/productionMigrationService.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4100);
@@ -138,6 +140,15 @@ app.post(
   '/api/admin/users/:id/roles',
   requirePermission('admin.roles.manage'),
   asyncHandler(validateRoleAssignments),
+  asyncHandler(async (req, res) => {
+    const result = await replaceUserRolesSafely(
+      req.user!.tenantId,
+      String(req.params.id),
+      req.user!.userId,
+      req.body?.roleIds,
+    );
+    res.json({ success: true, data: result, message: 'User roles replaced safely', errors: [] });
+  }),
 );
 app.delete('/api/admin/users/:id/roles/:roleId', requirePermission('admin.roles.manage'));
 
@@ -152,22 +163,33 @@ app.use(
 app.use('/api', routes);
 app.use(errorHandler);
 
-initDb()
-  .then((driver) => {
-    databaseDriver = driver;
+async function start() {
+  const databaseUrl = process.env.DATABASE_URL ?? '';
+  const shouldRunMigrations = isProduction || process.env.DB_RUN_PRODUCTION_MIGRATIONS === 'true';
 
-    // The repository can deliberately fall back to SQLite for local demos, but a
-    // production process must never continue on that fallback because that would
-    // create split-brain/lost-data risk after a Postgres outage.
-    if (isProduction && driver !== 'postgres') {
-      throw new Error('Production database initialization did not establish PostgreSQL');
-    }
+  if (shouldRunMigrations) {
+    const migrationResult = await runProductionMigrations(databaseUrl);
+    console.log(
+      `[db] production migrations applied=${migrationResult.applied.length} skipped=${migrationResult.skipped.length}`,
+    );
+  }
 
-    app.listen(port, () => {
-      console.log(`MissionOS API listening on http://localhost:${port} (database: ${driver})`);
-    });
-  })
-  .catch((err) => {
-    console.error('MissionOS API failed to initialize safely:', err);
-    process.exit(1);
+  const driver = await initDb();
+  databaseDriver = driver;
+
+  // The repository can deliberately fall back to SQLite for local demos, but a
+  // production process must never continue on that fallback because that would
+  // create split-brain/lost-data risk after a Postgres outage.
+  if (isProduction && driver !== 'postgres') {
+    throw new Error('Production database initialization did not establish PostgreSQL');
+  }
+
+  app.listen(port, () => {
+    console.log(`MissionOS API listening on http://localhost:${port} (database: ${driver})`);
   });
+}
+
+start().catch((err) => {
+  console.error('MissionOS API failed to initialize safely:', err);
+  process.exit(1);
+});

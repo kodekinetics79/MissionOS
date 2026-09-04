@@ -2,7 +2,8 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\"",
     "build": "npm run build:web && npm run build:api",
-    "test": "tsx --test --test-concurrency=1 server/src/services/authService.test.ts server/src/routes/crud.test.ts server/src/middleware/tenantGuard.test.ts server/src/utils/prisma.test.ts server/src/routes/routeOrder.test.ts",
+    "test": "tsx --test --test-concurrency=1 server/src/services/authService.test.ts server/src/routes/crud.test.ts server/src/middleware/tenantGuard.test.ts server/src/utils/prisma.test.ts server/src/routes/routeOrder.test.ts server/src/services/roleAssignmentIntegrityService.test.ts",
+    "test:postgres": "tsx --test --test-concurrency=1 server/src/services/productionMigrationService.test.ts",
     "check": "npm run test && npm run build",
     "preview": "vite preview --host 0.0.0.0 --port 9911",
     "dev:web": "vite --host 0.0.0.0 --port 9911",
@@ -11,6 +12,7 @@
     "build:api": "tsc -p server/tsconfig.json",
     "db:generate": "tsx server/src/scripts/initDb.ts",
     "db:migrate": "tsx server/src/scripts/initDb.ts",
+    "db:migrate:production": "tsx server/src/scripts/migrateProduction.ts",
     "db:seed": "tsx server/src/scripts/initDb.ts",
     "db:studio": "node -e \"console.log('SQLite database at data/missionos.sqlite')\"",
     "api": "node server/dist/index.js"
