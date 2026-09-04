@@ -4,9 +4,26 @@ import assert from 'node:assert/strict';
 process.env.DB_DRIVER = 'sqlite';
 process.env.DATABASE_URL = '';
 
-const { initDb, prisma, flushWrites } = await import('./prisma.js');
+type PrismaModules = {
+  initDb: (options?: { reset?: boolean }) => Promise<string>;
+  prisma: any;
+  flushWrites: () => Promise<void>;
+};
+
+let prismaModulesPromise: Promise<PrismaModules> | undefined;
+function loadPrismaModules(): Promise<PrismaModules> {
+  if (!prismaModulesPromise) {
+    prismaModulesPromise = import('./prisma.js').then((module) => ({
+      initDb: module.initDb,
+      prisma: module.prisma,
+      flushWrites: module.flushWrites,
+    }));
+  }
+  return prismaModulesPromise;
+}
 
 test('bulk repository mutations are awaited and return deterministic counts', async () => {
+  const { initDb, prisma, flushWrites } = await loadPrismaModules();
   await initDb({ reset: true });
 
   const model = prisma.ctoDurabilityProbe;
