@@ -12,6 +12,10 @@ import {
   enforceCurrentTenantSelector,
   requireTenantOwnedRoleMutation,
   requireTenantOwnedUser,
+  sanitizeAdminUserPayload,
+  sanitizeTenantProfilePayload,
+  sanitizeTenantRolePayload,
+  validateRoleAssignments,
 } from './middleware/tenantGuard.js';
 import { asyncHandler } from './utils/asyncHandler.js';
 import { initDb } from './utils/prisma.js';
@@ -113,10 +117,34 @@ app.use('/api/rms', authRequired, requirePermission('incidents.view'));
 app.use('/api/search', authRequired, requirePermission('core.view'));
 app.use('/api/analytics/dashboard', authRequired, requirePermission('analytics.view'));
 
-// Tenant-admin routes that previously accepted arbitrary tenant/resource ids.
+// Tenant-admin routes that previously accepted arbitrary tenant/resource ids or
+// trusted broad update payloads. These pre-route gates provide defense in depth
+// while the underlying services are progressively normalized.
 app.use('/api/admin/tenant-config', authRequired, enforceCurrentTenantSelector);
-app.use('/api/admin/users/:id', authRequired, asyncHandler(requireTenantOwnedUser));
-app.use('/api/admin/roles/:id', authRequired, asyncHandler(requireTenantOwnedRoleMutation));
+app.put('/api/admin/tenant', authRequired, requirePermission('admin.security.manage'), sanitizeTenantProfilePayload);
+
+app.post(
+  '/api/admin/users',
+  authRequired,
+  requirePermission('admin.users.manage'),
+  sanitizeAdminUserPayload,
+  asyncHandler(validateRoleAssignments),
+);
+app.use('/api/admin/users/:id', authRequired, asyncHandler(requireTenantOwnedUser), sanitizeAdminUserPayload);
+app.post(
+  '/api/admin/users/:id/roles',
+  requirePermission('admin.roles.manage'),
+  asyncHandler(validateRoleAssignments),
+);
+app.delete('/api/admin/users/:id/roles/:roleId', requirePermission('admin.roles.manage'));
+
+app.post('/api/admin/roles', authRequired, requirePermission('admin.roles.manage'), sanitizeTenantRolePayload);
+app.use(
+  '/api/admin/roles/:id',
+  authRequired,
+  asyncHandler(requireTenantOwnedRoleMutation),
+  sanitizeTenantRolePayload,
+);
 
 app.use('/api', apiLimiter, routes);
 app.use(errorHandler);
