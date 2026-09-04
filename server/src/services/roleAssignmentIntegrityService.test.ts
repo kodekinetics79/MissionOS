@@ -4,7 +4,9 @@ import { replaceUserRolesSafely } from './roleAssignmentIntegrityService.js';
 
 type Row = Record<string, any>;
 
-function makeStore(options: { failCreateRoleId?: string } = {}) {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function makeStore(options: { failCreateRoleId?: string; failAudit?: boolean; createDelayMs?: number } = {}) {
   const users: Row[] = [{ id: 'user-1', tenantId: 'tenant-a', email: 'user@example.test' }];
   const roles: Row[] = [
     { id: 'role-a', tenantId: 'tenant-a', code: 'a' },
@@ -36,6 +38,7 @@ function makeStore(options: { failCreateRoleId?: string } = {}) {
         return userRoles.filter((row) => matches(row, where)).map((row) => ({ ...row }));
       },
       async create({ data }: any) {
+        if (options.createDelayMs) await sleep(options.createDelayMs);
         if (options.failCreateRoleId && data.roleId === options.failCreateRoleId) {
           throw new Error(`Injected create failure for ${data.roleId}`);
         }
@@ -51,6 +54,7 @@ function makeStore(options: { failCreateRoleId?: string } = {}) {
     },
     auditLog: {
       async create({ data }: any) {
+        if (options.failAudit) throw new Error('Injected audit failure');
         audits.push({ ...data });
         return { ...data };
       },
@@ -100,6 +104,35 @@ test('injected write failure restores the exact original authorization set', asy
   assert.equal(fake.audits().length, 0);
 });
 
+test('audit failure restores the original authorization set instead of reporting an ambiguous success', async () => {
+  const fake = makeStore({ failAudit: true });
+
+  await assert.rejects(
+    () => replaceUserRolesSafely(
+      'tenant-a',
+      'user-1',
+      'admin-1',
+      ['role-b'],
+      fake.store,
+    ),
+    /Injected audit failure/,
+  );
+
+  assert.deepEqual(fake.roleIds(), ['role-a']);
+  assert.equal(fake.audits().length, 0);
+});
+
+test('concurrent replacements for one user are serialized into complete role sets', async () => {
+  const fake = makeStore({ createDelayMs: 10 });
+
+  const first = replaceUserRolesSafely('tenant-a', 'user-1', 'admin-1', ['role-b'], fake.store);
+  const second = replaceUserRolesSafely('tenant-a', 'user-1', 'admin-2', ['role-c'], fake.store);
+  await Promise.all([first, second]);
+
+  assert.deepEqual(fake.roleIds(), ['role-c']);
+  assert.equal(fake.audits().length, 2);
+});
+
 test('foreign-tenant roles are rejected before any authorization mutation', async () => {
   const fake = makeStore();
 
@@ -116,4 +149,15 @@ test('foreign-tenant roles are rejected before any authorization mutation', asyn
 
   assert.deepEqual(fake.roleIds(), ['role-a']);
   assert.equal(fake.audits().length, 0);
+});
+
+test('missing roleIds payload is rejected instead of accidentally clearing all roles', async () => {
+  const fake = makeStore();
+
+  await assert.rejects(
+    () => replaceUserRolesSafely('tenant-a', 'user-1', 'admin-1', undefined, fake.store),
+    (error: any) => error?.status === 400,
+  );
+
+  assert.deepEqual(fake.roleIds(), ['role-a']);
 });
