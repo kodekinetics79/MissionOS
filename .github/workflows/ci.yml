@@ -43,7 +43,24 @@ jobs:
         run: npm run build
 
       - name: Runtime dependency audit
-        run: npm audit --omit=dev --audit-level=high
+        shell: bash
+        run: |
+          set +e
+          npm audit --omit=dev --audit-level=high 2>&1 | tee npm-audit.log
+          audit_code=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$audit_code" -eq 0 ]; then
+            exit 0
+          fi
+
+          if grep -Eqi 'network timeout|audit endpoint returned an error|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|fetch failed' npm-audit.log; then
+            echo '::warning::npm advisory service was unavailable. No vulnerability finding was returned; dependency status remains externally unverified for this run.'
+            exit 0
+          fi
+
+          echo 'npm audit returned a vulnerability or non-network audit failure.'
+          exit "$audit_code"
         timeout-minutes: 2
         env:
           NPM_CONFIG_FETCH_RETRIES: '1'
