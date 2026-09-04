@@ -124,6 +124,9 @@ router.post('/personnel', authRequired, requirePermission('personnel.manage'), a
   const createdPersonnel = await createPersonnel(req.user!.tenantId, req.user!.userId, req.body ?? {});
   created(res, createdPersonnel, 'Personnel created');
 }));
+// Static collection routes precede /personnel/:id so keywords cannot be captured as ids.
+router.get('/personnel/risks', authRequired, requirePermission('personnel.view'), asyncHandler(async (req, res) => ok(res, await getPersonnelRisks(req.user!.tenantId), 'Personnel risks')));
+router.get('/personnel/readiness-summary', authRequired, requirePermission('personnel.view'), asyncHandler(async (req, res) => ok(res, await getPersonnelReadinessSummary(req.user!.tenantId), 'Personnel readiness summary')));
 router.get('/personnel/:id', authRequired, requirePermission('personnel.view'), asyncHandler(async (req, res) => {
   const personnel = await prisma.personnel.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId } });
   ok(res, personnel, 'Personnel detail');
@@ -157,8 +160,6 @@ router.put('/personnel/:id/goals/:goalId', authRequired, requirePermission('pers
 router.get('/personnel/:id/documents', authRequired, requirePermission('personnel.view'), asyncHandler(async (req, res) => ok(res, await getPersonnelDocuments(req.user!.tenantId, String(req.params.id)), 'Personnel documents')));
 router.post('/personnel/:id/documents', authRequired, requirePermission('personnel.manage'), asyncHandler(async (req, res) => created(res, await createPersonnelDocument(req.user!.tenantId, String(req.params.id), req.user!.userId, req.body ?? {}), 'Document uploaded')));
 router.get('/personnel/:id/readiness', authRequired, requirePermission('personnel.view'), asyncHandler(async (req, res) => ok(res, await getPersonnelReadiness(req.user!.tenantId, String(req.params.id)), 'Personnel readiness')));
-router.get('/personnel/risks', authRequired, requirePermission('personnel.view'), asyncHandler(async (req, res) => ok(res, await getPersonnelRisks(req.user!.tenantId), 'Personnel risks')));
-router.get('/personnel/readiness-summary', authRequired, requirePermission('personnel.view'), asyncHandler(async (req, res) => ok(res, await getPersonnelReadinessSummary(req.user!.tenantId), 'Personnel readiness summary')));
 router.get('/personnel-certifications/expiring', authRequired, requirePermission('personnel.view'), asyncHandler(async (req, res) => ok(res, await listExpiringPersonnelCertifications(req.user!.tenantId), 'Expiring certifications')));
 
 router.get('/certifications', authRequired, asyncHandler(async (req, res) => {
@@ -239,6 +240,5 @@ router.get('/analytics/dashboard', authRequired, asyncHandler(async (req, res) =
     openAiInsights: commandCenter.aiInsights.length,
   }, 'Dashboard analytics');
 }));
-
 
 export default router;

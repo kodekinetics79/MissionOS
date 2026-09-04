@@ -107,13 +107,14 @@ router.get('/inventory', authRequired, requirePermission('inventory.view'), asyn
 router.post('/inventory', authRequired, requirePermission('inventory.manage'), asyncHandler(async (req, res) => created(res, await createInventory(req.user!.tenantId, req.user!.userId, req.body ?? {}), 'Inventory item created')));
 router.get('/inventory/low-stock', authRequired, requirePermission('inventory.view'), asyncHandler(async (req, res) => ok(res, await listLowStockInventory(req.user!.tenantId), 'Low stock items')));
 router.get('/inventory/expiring', authRequired, requirePermission('inventory.view'), asyncHandler(async (req, res) => ok(res, await listExpiringInventory(req.user!.tenantId), 'Expiring items')));
-router.get('/inventory/:id', authRequired, requirePermission('inventory.view'), asyncHandler(async (req, res) => ok(res, await listInventory(req.user!.tenantId, 1, 500).then((result) => result.items.find((item: any) => item.id === req.params.id) ?? null), 'Inventory detail')));
-router.put('/inventory/:id', authRequired, requirePermission('inventory.manage'), asyncHandler(async (req, res) => ok(res, await updateInventory(req.user!.tenantId, String(req.params.id), req.user!.userId, req.body ?? {}), 'Inventory updated')));
+// Collection routes must precede /inventory/:id or the keyword is interpreted as an id.
 router.post('/inventory/transactions', authRequired, requirePermission('inventory.manage'), asyncHandler(async (req, res) => created(res, await createInventoryTransaction(req.user!.tenantId, req.user!.userId, req.body ?? {}), 'Inventory transaction created')));
 router.get('/inventory/transactions', authRequired, requirePermission('inventory.view'), asyncHandler(async (req, res) => {
   const { page, take } = getPagination(req.query as Record<string, unknown>);
   ok(res, await listInventoryTransactions(req.user!.tenantId, page, take), 'Inventory transactions');
 }));
+router.get('/inventory/:id', authRequired, requirePermission('inventory.view'), asyncHandler(async (req, res) => ok(res, await listInventory(req.user!.tenantId, 1, 500).then((result) => result.items.find((item: any) => item.id === req.params.id) ?? null), 'Inventory detail')));
+router.put('/inventory/:id', authRequired, requirePermission('inventory.manage'), asyncHandler(async (req, res) => ok(res, await updateInventory(req.user!.tenantId, String(req.params.id), req.user!.userId, req.body ?? {}), 'Inventory updated')));
 
 router.get('/maintenance-events', authRequired, requirePermission('maintenance.view'), asyncHandler(async (req, res) => {
   const { page, take } = getPagination(req.query as Record<string, unknown>);

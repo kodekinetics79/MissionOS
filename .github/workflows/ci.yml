@@ -1,0 +1,67 @@
+name: MissionOS CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'cto/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: missionos-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Test, build and dependency gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+        timeout-minutes: 5
+
+      - name: Core regression tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Runtime dependency audit
+        shell: bash
+        run: |
+          set +e
+          npm audit --omit=dev --audit-level=high 2>&1 | tee npm-audit.log
+          audit_code=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$audit_code" -eq 0 ]; then
+            exit 0
+          fi
+
+          if grep -Eqi 'network timeout|audit endpoint returned an error|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|fetch failed' npm-audit.log; then
+            echo '::warning::npm advisory service was unavailable. No vulnerability finding was returned; dependency status remains externally unverified for this run.'
+            exit 0
+          fi
+
+          echo 'npm audit returned a vulnerability or non-network audit failure.'
+          exit "$audit_code"
+        timeout-minutes: 2
+        env:
+          NPM_CONFIG_FETCH_RETRIES: '1'
+          NPM_CONFIG_FETCH_TIMEOUT: '30000'

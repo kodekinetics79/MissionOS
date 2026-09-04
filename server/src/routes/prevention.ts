@@ -107,6 +107,9 @@ router.get('/inspections', authRequired, requirePermission('inspections.view'), 
   }), 'Inspections');
 }));
 router.post('/inspections', authRequired, requirePermission('inspections.manage'), asyncHandler(async (req, res) => created(res, await createInspection(req.user!.tenantId, req.user!.userId, req.body ?? {}), 'Inspection created')));
+// Static collection routes MUST precede /:id or Express will treat the keyword as an id.
+router.get('/inspections/prioritized', authRequired, requirePermission('inspections.view'), asyncHandler(async (req, res) => ok(res, await listInspections(req.user!.tenantId, 1, 500, {}), 'Prioritized inspections')));
+router.get('/inspections/overdue', authRequired, requirePermission('inspections.view'), asyncHandler(async (req, res) => ok(res, await getOverdueInspections(req.user!.tenantId), 'Overdue inspections')));
 router.get('/inspections/:id', authRequired, requirePermission('inspections.view'), asyncHandler(async (req, res) => {
   const items = await listInspections(req.user!.tenantId, 1, 500, {});
   ok(res, items.items.find((item: any) => item.id === req.params.id) ?? null, 'Inspection detail');
@@ -115,8 +118,6 @@ router.put('/inspections/:id', authRequired, requirePermission('inspections.mana
 router.post('/inspections/:id/start', authRequired, requirePermission('inspections.manage'), asyncHandler(async (req, res) => ok(res, await startInspection(req.user!.tenantId, String(req.params.id), req.user!.userId), 'Inspection started')));
 router.post('/inspections/:id/complete', authRequired, requirePermission('inspections.manage'), asyncHandler(async (req, res) => ok(res, await completeInspection(req.user!.tenantId, String(req.params.id), req.user!.userId, req.body ?? {}), 'Inspection completed')));
 router.post('/inspections/:id/close', authRequired, requirePermission('inspections.manage'), asyncHandler(async (req, res) => ok(res, await closeInspection(req.user!.tenantId, String(req.params.id), req.user!.userId), 'Inspection closed')));
-router.get('/inspections/prioritized', authRequired, requirePermission('inspections.view'), asyncHandler(async (req, res) => ok(res, await listInspections(req.user!.tenantId, 1, 500, {}), 'Prioritized inspections')));
-router.get('/inspections/overdue', authRequired, requirePermission('inspections.view'), asyncHandler(async (req, res) => ok(res, await getOverdueInspections(req.user!.tenantId), 'Overdue inspections')));
 router.get('/inspections/:id/checklist', authRequired, requirePermission('inspections.view'), asyncHandler(async (req, res) => ok(res, await getInspectionChecklist(req.user!.tenantId, String(req.params.id)), 'Inspection checklist')));
 router.post('/inspections/:id/checklist', authRequired, requirePermission('inspections.manage'), asyncHandler(async (req, res) => created(res, await addInspectionChecklistItem(req.user!.tenantId, String(req.params.id), req.user!.userId, req.body ?? {}), 'Checklist item created')));
 
@@ -128,6 +129,8 @@ router.get('/violations', authRequired, requirePermission('violations.view'), as
   }), 'Violations');
 }));
 router.post('/violations', authRequired, requirePermission('violations.manage'), asyncHandler(async (req, res) => created(res, await createViolation(req.user!.tenantId, req.user!.userId, req.body ?? {}), 'Violation created')));
+router.get('/violations/open', authRequired, requirePermission('violations.view'), asyncHandler(async (req, res) => ok(res, await listOpenViolations(req.user!.tenantId), 'Open violations')));
+router.get('/violations/critical', authRequired, requirePermission('violations.view'), asyncHandler(async (req, res) => ok(res, await listCriticalViolations(req.user!.tenantId), 'Critical violations')));
 router.get('/violations/:id', authRequired, requirePermission('violations.view'), asyncHandler(async (req, res) => {
   const items = await listViolations(req.user!.tenantId, 1, 500, {});
   ok(res, items.items.find((item: any) => item.id === req.params.id) ?? null, 'Violation detail');
@@ -135,8 +138,6 @@ router.get('/violations/:id', authRequired, requirePermission('violations.view')
 router.put('/violations/:id', authRequired, requirePermission('violations.manage'), asyncHandler(async (req, res) => ok(res, await updateViolation(req.user!.tenantId, String(req.params.id), req.user!.userId, req.body ?? {}), 'Violation updated')));
 router.post('/violations/:id/resolve', authRequired, requirePermission('violations.manage'), asyncHandler(async (req, res) => ok(res, await resolveViolation(req.user!.tenantId, String(req.params.id), req.user!.userId), 'Violation resolved')));
 router.post('/violations/:id/escalate', authRequired, requirePermission('violations.manage'), asyncHandler(async (req, res) => ok(res, await escalateViolation(req.user!.tenantId, String(req.params.id), req.user!.userId), 'Violation escalated')));
-router.get('/violations/open', authRequired, requirePermission('violations.view'), asyncHandler(async (req, res) => ok(res, await listOpenViolations(req.user!.tenantId), 'Open violations')));
-router.get('/violations/critical', authRequired, requirePermission('violations.view'), asyncHandler(async (req, res) => ok(res, await listCriticalViolations(req.user!.tenantId), 'Critical violations')));
 
 router.get('/corrective-actions', authRequired, requirePermission('violations.view'), asyncHandler(async (req, res) => ok(res, await getCorrectiveActions(req.user!.tenantId), 'Corrective actions')));
 router.post('/corrective-actions', authRequired, requirePermission('violations.manage'), asyncHandler(async (req, res) => created(res, await createCorrectiveAction(req.user!.tenantId, req.user!.userId, req.body ?? {}), 'Corrective action created')));
@@ -151,6 +152,8 @@ router.get('/permits', authRequired, requirePermission('permits.view'), asyncHan
   }), 'Permits');
 }));
 router.post('/permits', authRequired, requirePermission('permits.manage'), asyncHandler(async (req, res) => created(res, await createPermit(req.user!.tenantId, req.user!.userId, req.body ?? {}), 'Permit created')));
+router.get('/permits/backlog', authRequired, requirePermission('permits.view'), asyncHandler(async (req, res) => ok(res, await listPermitBacklog(req.user!.tenantId), 'Permit backlog')));
+router.get('/permits/expiring', authRequired, requirePermission('permits.view'), asyncHandler(async (req, res) => ok(res, await listExpiringPermits(req.user!.tenantId), 'Expiring permits')));
 router.get('/permits/:id', authRequired, requirePermission('permits.view'), asyncHandler(async (req, res) => {
   const items = await listPermits(req.user!.tenantId, 1, 500, {});
   ok(res, items.items.find((item: any) => item.id === req.params.id) ?? null, 'Permit detail');
@@ -160,8 +163,6 @@ router.post('/permits/:id/review', authRequired, requirePermission('permits.mana
 router.post('/permits/:id/approve', authRequired, requirePermission('permits.manage'), asyncHandler(async (req, res) => ok(res, await approvePermit(req.user!.tenantId, String(req.params.id), req.user!.userId), 'Permit approved')));
 router.post('/permits/:id/deny', authRequired, requirePermission('permits.manage'), asyncHandler(async (req, res) => ok(res, await denyPermit(req.user!.tenantId, String(req.params.id), req.user!.userId), 'Permit denied')));
 router.post('/permits/:id/request-info', authRequired, requirePermission('permits.manage'), asyncHandler(async (req, res) => ok(res, await requestPermitInfo(req.user!.tenantId, String(req.params.id), req.user!.userId), 'Permit info requested')));
-router.get('/permits/backlog', authRequired, requirePermission('permits.view'), asyncHandler(async (req, res) => ok(res, await listPermitBacklog(req.user!.tenantId), 'Permit backlog')));
-router.get('/permits/expiring', authRequired, requirePermission('permits.view'), asyncHandler(async (req, res) => ok(res, await listExpiringPermits(req.user!.tenantId), 'Expiring permits')));
 
 router.get('/preplans', authRequired, requirePermission('preplans.view'), asyncHandler(async (req, res) => {
   const { page, take } = getPagination(req.query as Record<string, unknown>);
@@ -171,6 +172,8 @@ router.get('/preplans', authRequired, requirePermission('preplans.view'), asyncH
   }), 'Preplans');
 }));
 router.post('/preplans', authRequired, requirePermission('preplans.manage'), asyncHandler(async (req, res) => created(res, await createPreplan(req.user!.tenantId, req.user!.userId, req.body ?? {}), 'Preplan created')));
+router.get('/preplans/review-due', authRequired, requirePermission('preplans.view'), asyncHandler(async (req, res) => ok(res, await listPreplansReviewDue(req.user!.tenantId), 'Preplans review due')));
+router.get('/preplans/incomplete', authRequired, requirePermission('preplans.view'), asyncHandler(async (req, res) => ok(res, await listPreplansIncomplete(req.user!.tenantId), 'Incomplete preplans')));
 router.get('/preplans/:id', authRequired, requirePermission('preplans.view'), asyncHandler(async (req, res) => {
   const items = await listPreplans(req.user!.tenantId, 1, 500, {});
   ok(res, items.items.find((item: any) => item.id === req.params.id) ?? null, 'Preplan detail');
@@ -178,8 +181,6 @@ router.get('/preplans/:id', authRequired, requirePermission('preplans.view'), as
 router.put('/preplans/:id', authRequired, requirePermission('preplans.manage'), asyncHandler(async (req, res) => ok(res, await updatePreplan(req.user!.tenantId, String(req.params.id), req.user!.userId, req.body ?? {}), 'Preplan updated')));
 router.post('/preplans/:id/activate', authRequired, requirePermission('preplans.manage'), asyncHandler(async (req, res) => ok(res, await activatePreplan(req.user!.tenantId, String(req.params.id), req.user!.userId), 'Preplan activated')));
 router.post('/preplans/:id/mark-review-due', authRequired, requirePermission('preplans.manage'), asyncHandler(async (req, res) => ok(res, await markPreplanReviewDue(req.user!.tenantId, String(req.params.id), req.user!.userId), 'Preplan marked review due')));
-router.get('/preplans/review-due', authRequired, requirePermission('preplans.view'), asyncHandler(async (req, res) => ok(res, await listPreplansReviewDue(req.user!.tenantId), 'Preplans review due')));
-router.get('/preplans/incomplete', authRequired, requirePermission('preplans.view'), asyncHandler(async (req, res) => ok(res, await listPreplansIncomplete(req.user!.tenantId), 'Incomplete preplans')));
 
 router.get('/hydrants', authRequired, requirePermission('hydrants.view'), asyncHandler(async (req, res) => {
   const { page, take } = getPagination(req.query as Record<string, unknown>);

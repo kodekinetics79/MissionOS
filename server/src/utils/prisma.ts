@@ -130,11 +130,31 @@ function selectBackend(): Backend {
 let backend: Backend = selectBackend();
 const store = new Map<string, Row[]>();
 
+// Serialize writes per model. The JSON-document repository persists a whole model
+// for delete operations, so allowing a concurrent upsert against that same model
+// can otherwise lose data when replaceModel commits after the upsert. Different
+// models can still write in parallel.
+const writeTails = new Map<string, Promise<void>>();
+
+async function serializeModelWrite<T>(model: string, operation: () => Promise<T>): Promise<T> {
+  const previous = writeTails.get(model) ?? Promise.resolve();
+  const run = previous.catch(() => undefined).then(operation);
+  const tail = run.then(() => undefined, () => undefined);
+  writeTails.set(model, tail);
+  try {
+    return await run;
+  } finally {
+    if (writeTails.get(model) === tail) writeTails.delete(model);
+  }
+}
+
 // Reads come from the in-memory store (keeps the sync query engine untouched).
 // Writes update the store AND are persisted durably before the caller's promise
 // resolves — important on serverless, where the process can be frozen the instant
 // a response is sent (a fire-and-forget write would be lost).
-export async function flushWrites() { /* writes are awaited inline; nothing queued */ }
+export async function flushWrites() {
+  await Promise.all([...writeTails.values()]);
+}
 
 function memUpsert(model: string, row: Row): Row {
   const id = row.id ?? `${model}-${randomUUID()}`;
@@ -151,18 +171,22 @@ function loadRows(model: string): Row[] {
 }
 
 async function upsertRow(model: string, row: Row) {
-  const storedRow = memUpsert(model, row);
-  await backend.upsert(model, storedRow);
-  return storedRow;
+  return serializeModelWrite(model, async () => {
+    const storedRow = memUpsert(model, row);
+    await backend.upsert(model, storedRow);
+    return storedRow;
+  });
 }
 
 async function deleteRows(model: string, predicate: (row: Row) => boolean) {
-  const rows = store.get(model) ?? [];
-  const kept = rows.filter((row) => !predicate(row));
-  const removed = rows.length - kept.length;
-  store.set(model, kept);
-  await backend.replaceModel(model, kept);
-  return removed;
+  return serializeModelWrite(model, async () => {
+    const rows = store.get(model) ?? [];
+    const kept = rows.filter((row) => !predicate(row));
+    const removed = rows.length - kept.length;
+    store.set(model, kept);
+    await backend.replaceModel(model, kept);
+    return removed;
+  });
 }
 
 // Populate the in-memory store from seed data (no per-row persistence — the
@@ -190,6 +214,7 @@ export async function initDb(options: { reset?: boolean } = {}): Promise<string>
       throw err;
     }
   }
+  await flushWrites();
   store.clear();
   if (options.reset) await backend.truncate();
   const total = options.reset ? 0 : await backend.count();
@@ -582,15 +607,19 @@ function makeDelegate(model: string) {
     },
     updateMany: async (args: { where?: Where; data?: Row } = {}) => {
       let count = 0;
-      for (const row of loadRows(model)) {
-        if (matchWhere(row, args.where, model)) {
-          upsertRow(model, { ...row, ...args.data, updatedAt: new Date().toISOString() });
-          count += 1;
-        }
+      // Snapshot matching rows first. Each durable write is awaited; callers never
+      // receive success while persistence is still pending.
+      const matching = loadRows(model).filter((row) => matchWhere(row, args.where, model));
+      for (const row of matching) {
+        await upsertRow(model, { ...row, ...args.data, updatedAt: new Date().toISOString() });
+        count += 1;
       }
       return { count };
     },
-    deleteMany: async (args: { where?: Where } = {}) => ({ count: deleteRows(model, (row) => matchWhere(row, args.where, model)) }),
+    deleteMany: async (args: { where?: Where } = {}) => {
+      const count = await deleteRows(model, (row) => matchWhere(row, args.where, model));
+      return { count };
+    },
     findFirstOrThrow: async (args: { where?: Where; include?: any } = {}) => {
       const result = await makeDelegate(model).findFirst(args);
       if (!result) throw new Error(`${model} not found`);
@@ -602,8 +631,9 @@ function makeDelegate(model: string) {
       return result;
     },
     createMany: async (args: { data?: Row[] } = {}) => {
-      for (const row of args.data ?? []) upsertRow(model, row);
-      return { count: (args.data ?? []).length };
+      const rows = args.data ?? [];
+      for (const row of rows) await upsertRow(model, row);
+      return { count: rows.length };
     },
   };
 }
@@ -613,10 +643,16 @@ export const prisma: any = new Proxy(
   {
     get: (_target, property) => {
       if (property === '$transaction') {
+        // Compatibility only: callers pass already-created promises, so this is
+        // not a true atomic database transaction. Production-critical multi-model
+        // workflows must use explicit service-level compensation until the target
+        // normalized Prisma/Postgres layer replaces this demo repository.
         return async (operations: Array<Promise<unknown>>) => Promise.all(operations);
       }
       if (property === '$disconnect') {
-        return async () => undefined;
+        return async () => {
+          await flushWrites();
+        };
       }
       return makeDelegate(String(property));
     },
