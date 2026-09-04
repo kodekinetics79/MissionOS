@@ -1,11 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const source = (name: string) => readFileSync(join(here, name), 'utf8');
+const routesDir = join(process.cwd(), 'server', 'src', 'routes');
+const source = (name: string) => readFileSync(join(routesDir, name), 'utf8');
 
 function assertBefore(content: string, specificRoute: string, dynamicRoute: string) {
   const specific = content.indexOf(specificRoute);
