@@ -14,7 +14,7 @@ export type AuthUser = {
 type AccessClaims = {
   userId: string;
   sessionVersion?: number;
-  tokenType?: 'access';
+  tokenType?: string;
 };
 
 declare global {
@@ -23,6 +23,20 @@ declare global {
       user?: AuthUser;
     }
   }
+}
+
+const LEGACY_PERMISSION_ALIASES: Record<string, string[]> = {
+  'admin.users': ['admin.users.view', 'admin.users.manage'],
+  'admin.roles': ['admin.roles.view', 'admin.roles.manage', 'admin.permissions.view', 'admin.permissions.manage'],
+  'admin.audit': ['admin.audit.view'],
+  'admin.security': ['admin.security.view', 'admin.security.manage'],
+};
+
+function hasPermission(granted: string[], required: string) {
+  if (granted.includes(required)) return true;
+  return Object.entries(LEGACY_PERMISSION_ALIASES).some(
+    ([legacy, aliases]) => granted.includes(legacy) && aliases.includes(required),
+  );
 }
 
 function unauthorized(res: Response, reason = 'Invalid token') {
@@ -90,10 +104,9 @@ export async function authRequired(req: Request, res: Response, next: NextFuncti
 
 export function requirePermission(permission: string) {
   return (req: Request, res: Response, next: NextFunction) => {
-    // Exact permission only. `admin.security` is a security-domain permission,
-    // not a global superuser wildcard. District Admin already receives all seeded
-    // permissions explicitly, preserving least privilege for every other role.
-    if (!req.user?.permissions?.includes(permission)) {
+    // Exact permission or a bounded legacy alias in the same admin domain only.
+    // `admin.security` is no longer a global superuser wildcard.
+    if (!req.user || !hasPermission(req.user.permissions ?? [], permission)) {
       return res.status(403).json({
         success: false,
         data: null,
