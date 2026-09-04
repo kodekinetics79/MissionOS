@@ -44,3 +44,7 @@ jobs:
 
       - name: Runtime dependency audit
         run: npm audit --omit=dev --audit-level=high
+        timeout-minutes: 2
+        env:
+          NPM_CONFIG_FETCH_RETRIES: '1'
+          NPM_CONFIG_FETCH_TIMEOUT: '30000'
