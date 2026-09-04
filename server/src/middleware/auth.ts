@@ -53,6 +53,10 @@ function unauthorized(res: Response, reason = 'Invalid token') {
  * - tenant identity is loaded from the user record rather than trusted from a token.
  */
 export async function authRequired(req: Request, res: Response, next: NextFunction) {
+  // App-level policy guards may authenticate before a route's own authRequired.
+  // Reuse that verified identity within the same request to avoid duplicate DB reads.
+  if (req.user) return next();
+
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) return unauthorized(res, 'Missing bearer token');
 
