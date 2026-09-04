@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { accessSecret, JWT_ALGS } from '../utils/secrets.js';
 import { prisma } from '../utils/prisma.js';
+import { adminMfaRequired } from '../services/mfaService.js';
 
 export type AuthUser = {
   userId: string;
@@ -9,6 +10,7 @@ export type AuthUser = {
   permissions: string[];
   email: string;
   sessionVersion: number;
+  mfaRestricted: boolean;
 };
 
 type AccessClaims = {
@@ -43,6 +45,23 @@ function unauthorized(res: Response, reason = 'Invalid token') {
   return res.status(401).json({ success: false, data: null, message: 'Unauthorized', errors: [reason] });
 }
 
+function mfaEnrollmentEndpoint(req: Request) {
+  const path = req.originalUrl?.split('?')[0] ?? req.path;
+  return path.startsWith('/api/auth/mfa/') || path === '/api/auth/me' || path === '/api/auth/logout';
+}
+
+function enforceMfaRestriction(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.mfaRestricted && !mfaEnrollmentEndpoint(req)) {
+    return res.status(403).json({
+      success: false,
+      data: null,
+      message: 'MFA enrollment required',
+      errors: ['Complete MFA enrollment before accessing privileged functions'],
+    });
+  }
+  next();
+}
+
 /**
  * Authenticate against the current database state, not stale JWT authorization claims.
  *
@@ -50,12 +69,14 @@ function unauthorized(res: Response, reason = 'Invalid token') {
  * - disabling a user takes effect immediately;
  * - logout/session revocation takes effect immediately via sessionVersion;
  * - role/permission changes take effect on the next request;
- * - tenant identity is loaded from the user record rather than trusted from a token.
+ * - tenant identity is loaded from the user record rather than trusted from a token;
+ * - privileged MFA policy is enforced from current DB state on every request.
  */
 export async function authRequired(req: Request, res: Response, next: NextFunction) {
   // App-level policy guards may authenticate before a route's own authRequired.
-  // Reuse that verified identity within the same request to avoid duplicate DB reads.
-  if (req.user) return next();
+  // Reuse that verified identity within the same request to avoid duplicate DB reads,
+  // while still applying the MFA restriction to every route layer.
+  if (req.user) return enforceMfaRestriction(req, res, next);
 
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) return unauthorized(res, 'Missing bearer token');
@@ -92,6 +113,7 @@ export async function authRequired(req: Request, res: Response, next: NextFuncti
         ),
       ),
     ) as string[];
+    const mfaConfigured = Boolean(user.mfaEnabled && user.mfaSecret);
 
     req.user = {
       userId: user.id,
@@ -99,8 +121,9 @@ export async function authRequired(req: Request, res: Response, next: NextFuncti
       permissions,
       email: user.email,
       sessionVersion: currentSessionVersion,
+      mfaRestricted: adminMfaRequired(permissions, mfaConfigured),
     };
-    next();
+    return enforceMfaRestriction(req, res, next);
   } catch {
     return unauthorized(res);
   }
