@@ -8,9 +8,31 @@ process.env.DB_DRIVER = 'sqlite';
 process.env.DATABASE_URL = '';
 process.env.MFA_REQUIRED_FOR_ADMIN = 'false';
 
-const { initDb } = await import('../utils/prisma.js');
-const { login, refreshSession, logout } = await import('./authService.js');
-const { authRequired } = await import('../middleware/auth.js');
+type AuthModules = {
+  initDb: (options?: { reset?: boolean }) => Promise<string>;
+  login: (email: string, password: string, totp?: string) => Promise<any>;
+  refreshSession: (token: string) => Promise<any>;
+  logout: (userId: string) => Promise<boolean>;
+  authRequired: (req: any, res: any, next: any) => Promise<any>;
+};
+
+let authModulesPromise: Promise<AuthModules> | undefined;
+function loadAuthModules(): Promise<AuthModules> {
+  if (!authModulesPromise) {
+    authModulesPromise = Promise.all([
+      import('../utils/prisma.js'),
+      import('./authService.js'),
+      import('../middleware/auth.js'),
+    ]).then(([prismaModule, authServiceModule, authMiddlewareModule]) => ({
+      initDb: prismaModule.initDb,
+      login: authServiceModule.login,
+      refreshSession: authServiceModule.refreshSession,
+      logout: authServiceModule.logout,
+      authRequired: authMiddlewareModule.authRequired,
+    }));
+  }
+  return authModulesPromise;
+}
 
 function mockResponse() {
   const state: { status?: number; body?: any } = {};
@@ -28,6 +50,7 @@ function mockResponse() {
 }
 
 test('logout revokes previously issued refresh tokens and permits a fresh login', async () => {
+  const { initDb, login, refreshSession, logout } = await loadAuthModules();
   await initDb({ reset: true });
 
   const session = await login('admin@westmetro.example', 'MissionOS2026!');
@@ -51,6 +74,7 @@ test('logout revokes previously issued refresh tokens and permits a fresh login'
 });
 
 test('privileged MFA policy restricts an unenrolled admin to enrollment endpoints', async () => {
+  const { initDb, login, authRequired } = await loadAuthModules();
   await initDb({ reset: true });
   process.env.MFA_REQUIRED_FOR_ADMIN = 'true';
 
