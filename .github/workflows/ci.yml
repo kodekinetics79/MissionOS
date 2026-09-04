@@ -22,6 +22,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: missionos
+          POSTGRES_PASSWORD: missionos_ci
+          POSTGRES_DB: missionos_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U missionos -d missionos_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,6 +53,12 @@ jobs:
 
       - name: Core regression tests
         run: npm test
+
+      - name: PostgreSQL migration integrity
+        run: npm run test:postgres
+        env:
+          TEST_DATABASE_URL: postgresql://missionos:missionos_ci@127.0.0.1:5432/missionos_ci
+          ALLOW_DESTRUCTIVE_DB_TESTS: 'true'
 
       - name: Production build
         run: npm run build
