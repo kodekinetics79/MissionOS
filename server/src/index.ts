@@ -6,6 +6,14 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import routes from './routes/index.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { authRequired, requirePermission } from './middleware/auth.js';
+import {
+  currentTenantList,
+  enforceCurrentTenantSelector,
+  requireTenantOwnedRoleMutation,
+  requireTenantOwnedUser,
+} from './middleware/tenantGuard.js';
+import { asyncHandler } from './utils/asyncHandler.js';
 import { initDb } from './utils/prisma.js';
 import { accessSecret, refreshSecret } from './utils/secrets.js';
 
@@ -87,6 +95,29 @@ app.get('/ready', (_req, res) => {
 
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/refresh', authLimiter);
+
+// ── Core authorization/tenancy boundary ────────────────────────────────────
+// These guards sit in front of legacy foundation/admin routes so the platform
+// cannot expose cross-tenant data even where an older route/service is broader
+// than the current production policy.
+app.get('/api/tenants', authRequired, asyncHandler(currentTenantList));
+app.use('/api/users', authRequired, requirePermission('admin.users.view'));
+app.use('/api/roles', authRequired, requirePermission('admin.roles.view'));
+app.use('/api/permissions', authRequired, requirePermission('admin.permissions.view'));
+app.use('/api/rbac/matrix', authRequired, requirePermission('admin.permissions.view'));
+app.use('/api/platform/summary', authRequired, requirePermission('dashboard.view'));
+app.use('/api/stations', authRequired, requirePermission('stations.view'));
+app.use('/api/certifications', authRequired, requirePermission('training.view'));
+app.use('/api/properties', authRequired, requirePermission('prevention.view'));
+app.use('/api/rms', authRequired, requirePermission('incidents.view'));
+app.use('/api/search', authRequired, requirePermission('core.view'));
+app.use('/api/analytics/dashboard', authRequired, requirePermission('analytics.view'));
+
+// Tenant-admin routes that previously accepted arbitrary tenant/resource ids.
+app.use('/api/admin/tenant-config', authRequired, enforceCurrentTenantSelector);
+app.use('/api/admin/users/:id', authRequired, asyncHandler(requireTenantOwnedUser));
+app.use('/api/admin/roles/:id', authRequired, asyncHandler(requireTenantOwnedRoleMutation));
+
 app.use('/api', apiLimiter, routes);
 app.use(errorHandler);
 
