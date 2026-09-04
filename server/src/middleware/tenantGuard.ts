@@ -1,12 +1,12 @@
 import type { Request, Response, NextFunction } from 'express';
 import { prisma } from '../utils/prisma.js';
 
-function forbidden(res: Response) {
+function forbidden(res: Response, message = 'Cross-tenant access is not allowed') {
   return res.status(403).json({
     success: false,
     data: null,
     message: 'Forbidden',
-    errors: ['Cross-tenant access is not allowed'],
+    errors: [message],
   });
 }
 
@@ -60,7 +60,96 @@ export async function requireTenantOwnedRoleMutation(req: Request, res: Response
 
   const role = await prisma.role.findFirst({ where: { id } });
   if (!role || role.tenantId !== req.user.tenantId) return notFound(res);
-  if (role.isSystemRole) return forbidden(res);
+  if (role.isSystemRole) return forbidden(res, 'System roles cannot be modified by tenant administrators');
+  next();
+}
+
+/**
+ * User create/update is intentionally allowlisted. The legacy admin service
+ * spreads update payloads into the stored row, so sensitive fields such as
+ * tenantId, passwordHash, MFA secrets, sessionVersion or an arbitrary id must
+ * never reach it from the client.
+ */
+export function sanitizeAdminUserPayload(req: Request, _res: Response, next: NextFunction) {
+  const body = req.body ?? {};
+
+  if (req.method === 'POST' && !req.params.id) {
+    req.body = {
+      email: body.email,
+      displayName: body.displayName,
+      personnelId: body.personnelId ?? null,
+      status: body.status,
+      ssoProvider: body.ssoProvider ?? null,
+      password: body.password,
+      roleIds: Array.isArray(body.roleIds) ? body.roleIds : [],
+      // MFA must be enabled through proof-of-possession enrollment, never by a
+      // cosmetic/admin-created boolean with no secret behind it.
+      mfaEnabled: false,
+    };
+    return next();
+  }
+
+  if (req.method === 'PUT' || req.method === 'PATCH') {
+    req.body = {
+      email: body.email,
+      displayName: body.displayName,
+      personnelId: body.personnelId,
+      status: body.status,
+      ssoProvider: body.ssoProvider,
+    };
+  }
+  next();
+}
+
+/** Tenant profile updates cannot rewrite the tenant's immutable identity. */
+export function sanitizeTenantProfilePayload(req: Request, _res: Response, next: NextFunction) {
+  if (req.method !== 'PUT' && req.method !== 'PATCH') return next();
+  const { id: _id, tenantId: _tenantId, createdAt: _createdAt, createdBy: _createdBy, ...safe } = req.body ?? {};
+  req.body = safe;
+  next();
+}
+
+/** Tenant-created roles can never elevate themselves into system roles. */
+export function sanitizeTenantRolePayload(req: Request, _res: Response, next: NextFunction) {
+  const body = req.body ?? {};
+  if (req.method === 'POST' && !req.params.id) {
+    req.body = {
+      name: body.name,
+      code: body.code,
+      description: body.description,
+      roleType: body.roleType,
+      isSystemRole: false,
+    };
+  } else if (req.method === 'PUT' || req.method === 'PATCH') {
+    req.body = {
+      name: body.name,
+      code: body.code,
+      description: body.description,
+      roleType: body.roleType,
+    };
+  }
+  next();
+}
+
+/**
+ * Validate every requested role assignment against the caller's tenant (or a
+ * shared/global role). Guessing another tenant's custom role id must not grant its
+ * permissions to a local user.
+ */
+export async function validateRoleAssignments(req: Request, res: Response, next: NextFunction) {
+  const roleIds = Array.isArray(req.body?.roleIds)
+    ? Array.from(new Set(req.body.roleIds.map(String).filter(Boolean)))
+    : [];
+  if (!roleIds.length) return next();
+
+  for (const roleId of roleIds) {
+    const role = await prisma.role.findFirst({ where: { id: roleId } });
+    if (!role || (role.tenantId != null && role.tenantId !== req.user?.tenantId)) {
+      return forbidden(res, 'One or more requested roles are outside the current tenant');
+    }
+  }
+
+  req.body.roleIds = roleIds;
   next();
 }
 
