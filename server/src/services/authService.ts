@@ -40,6 +40,10 @@ function currentSessionVersion(user: any) {
   return Number(user.sessionVersion ?? 0);
 }
 
+function hasConfiguredMfa(user: any) {
+  return Boolean(user?.mfaEnabled && user?.mfaSecret);
+}
+
 function signAccessToken(userId: string, sessionVersion: number) {
   return jwt.sign(
     { userId, sessionVersion, tokenType: 'access' },
@@ -66,9 +70,11 @@ export async function login(email: string, password: string, totp?: string) {
   if (!valid) throw new Error('Invalid credentials');
 
   const permissions = permissionsFor(user);
+  const mfaConfigured = hasConfiguredMfa(user);
 
-  // Second factor: if MFA is enabled for this user, a valid TOTP code is required.
-  if (user.mfaEnabled && user.mfaSecret) {
+  // Second factor: an MFA flag without a real secret is NOT considered enabled.
+  // This prevents stale/demo metadata from silently satisfying an MFA policy.
+  if (mfaConfigured) {
     if (!totp) {
       const error: any = new Error('MFA code required');
       error.status = 401;
@@ -95,15 +101,16 @@ export async function login(email: string, password: string, totp?: string) {
   return {
     accessToken,
     refreshToken,
-    // Policy signal: admins required to enroll MFA (env-gated) but not yet enrolled.
-    mfaEnrollmentRequired: adminMfaRequired(permissions, Boolean(user.mfaEnabled)),
+    // When policy is enabled, auth middleware restricts unenrolled admins to the
+    // MFA enrollment/status/me/logout endpoints until a real TOTP secret exists.
+    mfaEnrollmentRequired: adminMfaRequired(permissions, mfaConfigured),
     user: {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
       tenant: user.tenant.name,
       permissions,
-      mfaEnabled: Boolean(user.mfaEnabled),
+      mfaEnabled: mfaConfigured,
     },
   };
 }
@@ -121,16 +128,19 @@ export async function refreshSession(token: string) {
 
   const sessionVersion = currentSessionVersion(user);
   if (Number(claims.sessionVersion ?? 0) !== sessionVersion) throw new Error('Invalid credentials');
+  const permissions = permissionsFor(user);
+  const mfaConfigured = hasConfiguredMfa(user);
 
   return {
     accessToken: signAccessToken(user.id, sessionVersion),
+    mfaEnrollmentRequired: adminMfaRequired(permissions, mfaConfigured),
     user: {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
       tenant: user.tenant.name,
-      permissions: permissionsFor(user),
-      mfaEnabled: Boolean(user.mfaEnabled),
+      permissions,
+      mfaEnabled: mfaConfigured,
     },
   };
 }
